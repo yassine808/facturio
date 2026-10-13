@@ -1,9 +1,12 @@
 import { redirect } from "next/navigation";
+import { CreateOrgForm } from "@/features/orgs/create-org-form";
+import { listOrgsForUser } from "@/features/orgs/queries";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Dashboard. Organizations land in Phase 2 — until then this is the real
- * empty state: a signed-in user with no organization yet.
+ * Entry point of the app. Users with organizations go to their first (oldest)
+ * one — the switcher in the header handles the rest. Users without any get
+ * the real onboarding screen right here.
  */
 export default async function AppHomePage() {
   const supabase = await createClient();
@@ -12,17 +15,23 @@ export default async function AppHomePage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
+  const orgs = await listOrgsForUser(supabase);
+  if (orgs.length > 0) redirect(`/app/${orgs[0].slug}`);
+
   return (
-    <div className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-semibold tracking-tight">
-        Welcome{user.email ? `, ${user.email}` : ""}
-      </h1>
-      <div className="mt-6 rounded-lg border border-dashed border-zinc-300 p-8 text-center dark:border-zinc-700">
-        <p className="text-sm text-zinc-600 dark:text-zinc-400">
-          You don&apos;t belong to an organization yet. Organizations are coming in the
-          next phase of this project.
-        </p>
+    <div className="mx-auto max-w-md">
+      <h1 className="text-2xl font-semibold tracking-tight">Create your organization</h1>
+      <p className="mt-2 text-sm text-zinc-600 dark:text-zinc-400">
+        An organization is your workspace: you invite teammates, then manage
+        clients and invoices inside it.
+      </p>
+      <div className="mt-6">
+        <CreateOrgForm />
       </div>
+      <p className="mt-6 text-sm text-zinc-500 dark:text-zinc-400">
+        Got an invite link? Open it while signed in to join an existing
+        organization.
+      </p>
     </div>
   );
 }
