@@ -51,12 +51,12 @@ export function SignupForm() {
           autoComplete="new-password"
           className={input}
         />
-        <p className="mt-1 text-xs text-zinc-500">At least 8 characters.</p>
+        <p className="mt-1 text-xs text-zinc-500 dark:text-zinc-400">At least 8 characters.</p>
       </div>
       <button type="submit" disabled={pending} className={button}>
         {pending ? "Creating account…" : "Create account"}
       </button>
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
         Already registered?{" "}
         <Link
           href="/login"

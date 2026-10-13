@@ -18,7 +18,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
         <span className="text-sm font-semibold tracking-tight">Facturio</span>
         <div className="flex items-center gap-4">
           {/* ponytail: no avatar library — email proves who is signed in */}
-          <span className="hidden text-sm text-zinc-500 sm:inline">{user.email}</span>
+          <span className="hidden text-sm text-zinc-500 dark:text-zinc-400 sm:inline">{user.email}</span>
           <form action={logout}>
             <button
               type="submit"

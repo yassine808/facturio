@@ -45,7 +45,7 @@ export default function HomePage() {
         </div>
       </main>
 
-      <footer className="px-6 py-4 text-center text-xs text-zinc-500">
+      <footer className="px-6 py-4 text-center text-xs text-zinc-500 dark:text-zinc-400">
         Portfolio project — not a real invoicing service.
       </footer>
     </div>

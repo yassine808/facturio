@@ -17,7 +17,7 @@ export default function GlobalError({
   return (
     <main className="flex min-h-screen flex-col items-center justify-center gap-4 px-4 text-center">
       <h1 className="text-xl font-semibold">Something went wrong</h1>
-      <p className="text-sm text-zinc-500">
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
         {error.digest ? `Error ${error.digest}` : error.message}
       </p>
       <button

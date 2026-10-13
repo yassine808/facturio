@@ -38,7 +38,7 @@ export default function ResetPasswordPage() {
   if (exchange === "pending") {
     return (
       <AuthCard title="Reset password">
-        <p className="text-sm text-zinc-500">Checking your link…</p>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">Checking your link…</p>
       </AuthCard>
     );
   }
