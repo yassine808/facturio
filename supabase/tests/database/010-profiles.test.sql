@@ -10,25 +10,32 @@ begin;
 select plan(12);
 
 -- ---------- setup (superuser) ----------
+-- per-step diagnostics (TAP comments, no assertions): previous CI runs showed
+-- the second create_user call silently producing no row, so every step of
+-- setup reports the state it produced.
 select tests.create_user('[email protected]');
-select tests.create_user('[email protected]');
+select diag(
+  'AFTER alice: users=' || (select count(*)::text from auth.users)
+  || ' profiles=' || (select count(*)::text from public.profiles)
+);
 
--- setup diagnostics (TAP comments, no assertions): make any setup failure
--- explain itself on the first CI run instead of requiring a second one.
+select tests.create_user('[email protected]');
 select diag(
-  (select string_agg(format('user %s email=%s', id, email), E'\n')
-     from auth.users)
+  'AFTER bob: users=' || (select count(*)::text from auth.users)
+  || ' profiles=' || (select count(*)::text from public.profiles)
+  || ' bob=' || coalesce(
+       (select id::text from auth.users where email = '[email protected]'),
+       'MISSING')
 );
+
+-- isolate helper vs platform: identical insert without the function wrapper
+insert into auth.users (id, email, raw_user_meta_data)
+values (gen_random_uuid(), '[email protected]', '{}'::jsonb);
 select diag(
-  (select string_agg(format('profile %s', id), E'\n')
-     from public.profiles)
-);
-select diag(
-  'auth.users triggers: ' || coalesce(
-    (select string_agg(tgname, ', ' order by tgname)
-       from pg_trigger
-      where tgrelid = 'auth.users'::regclass and not tgisinternal),
-    'NONE')
+  'AFTER raw bob: users=' || (select count(*)::text from auth.users)
+  || ' bob=' || coalesce(
+       (select id::text from auth.users where email = '[email protected]'),
+       'MISSING')
 );
 
 -- both users must exist before we count their profiles
@@ -78,7 +85,7 @@ select is(
 
 select is_empty(
   $$ select id from public.profiles where id = tests.user_id('[email protected]') $$,
-  "SECURITY: alice cannot see bob's profile"
+  'SECURITY: alice cannot see bob''s profile'
 );
 
 -- update own row: allowed, 1 row affected
@@ -98,7 +105,7 @@ select is(
      returning 1
    ) select count(*)::int from r),
   0,
-  "SECURITY: alice cannot update bob's profile (0 rows)"
+  'SECURITY: alice cannot update bob''s profile (0 rows)'
 );
 
 -- insert a row for bob: WITH CHECK rejects → SQLSTATE 42501
@@ -107,7 +114,7 @@ select throws_ok(
      values (tests.user_id('[email protected]'), 'evil') $$,
   '42501',
   null,
-  "SECURITY: alice cannot insert a profile for bob"
+  'SECURITY: alice cannot insert a profile for bob'
 );
 
 -- delete own row: no DELETE policy → filtered out, profile survives
@@ -129,7 +136,7 @@ select tests.authenticate_as('[email protected]');
 select is(
   (select count(*)::int from public.profiles),
   1,
-  "bob sees exactly his own profile (alice's hidden)"
+  'bob sees exactly his own profile (alice''s hidden)'
 );
 
 select tests.clear_authentication();
