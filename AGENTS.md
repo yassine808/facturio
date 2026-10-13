@@ -14,8 +14,8 @@ The original build brief supersedes this file where more specific. Current phase
 pnpm lint && pnpm typecheck && pnpm test && pnpm check:env   # local gate before claiming "done"
 pnpm build                                                    # needs .env present (placeholders OK locally)
 pnpm dev                                                      # next dev on :3000
-pnpm exec next typegen                                        # FIX: first typecheck fails with TS2304 'LayoutProps'
-                                                             # until route types are generated (run once after clone)
+# NOTE: `typecheck` runs `next typegen` first — route types (LayoutProps) live in
+# .next/types and do NOT exist on a fresh clone. Never drop typegen from the script.
 pnpm db:start → pnpm db:env → pnpm db:reset → pnpm test:db    # local Supabase flow (needs Docker)
 pnpm test:e2e                                                 # Playwright; builds+starts server unless PLAYWRIGHT_BASE_URL set
 ```
