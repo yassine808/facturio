@@ -15,11 +15,13 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* Class-driven (.dark on <html>), NOT @media (prefers-color-scheme): the body
+   rule below is unlayered, so it beats Tailwind's layered utilities — these
+   vars are what actually paints the page. An @media block here would desync
+   the background from the dark: utility variants (light bg + dark text). */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 body {
