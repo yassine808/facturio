@@ -2,14 +2,16 @@
 -- Personas: anon, outsider (authenticated, other user), owner.
 -- The runner is a superuser (bypasses RLS) — every assertion therefore runs
 -- under an explicit role + JWT claims, or it proves nothing.
+-- Row-count assertions use WITH ... RETURNING + count: results_eq against
+-- `values (0)` would compare an empty set with {(0)} and always fail.
 
 begin;
 
-select plan(12);
+select plan(11);
 
 -- ---------- setup (superuser) ----------
-select tests.create_user('[email protected]') as alice \gset
-select tests.create_user('[email protected]') as bob \gset
+select tests.create_user('[email protected]');
+select tests.create_user('[email protected]');
 
 -- trigger must have auto-created exactly one profile per user
 select is(
@@ -35,7 +37,7 @@ select is_empty(
 select tests.clear_authentication();
 
 -- ---------- alice (owner of her row) ----------
-select tests.authenticate_as('[email protected]');
+select tests.authenticate_as('[email protected]');
 
 select is(
   (select count(*)::int from public.profiles),
@@ -45,50 +47,59 @@ select is(
 
 select is(
   (select id from public.profiles),
-  tests.user_id('[email protected]'),
+  tests.user_id('[email protected]'),
   'alice sees exactly her row'
 );
 
 select is_empty(
-  $$ select id from public.profiles where id = tests.user_id('[email protected]') $$,
+  $$ select id from public.profiles where id = tests.user_id('[email protected]') $$,
   "SECURITY: alice cannot see bob's profile"
 );
 
 -- update own row: allowed, 1 row affected
-select results_eq(
-  $$ update public.profiles set display_name = 'Alice A' returning 1 $$,
-  $$ values (1) $$,
+select is(
+  (with r as (
+     update public.profiles set display_name = 'Alice A' returning 1
+   ) select count(*)::int from r),
+  1,
   'alice can update her own profile'
 );
 
 -- update bob's row: USING filters it out → 0 rows, no error
-select results_eq(
-  $$ update public.profiles set display_name = 'hacked'
-     where id = tests.user_id('[email protected]') returning 1 $$,
-  $$ values (0) $$,
+select is(
+  (with r as (
+     update public.profiles set display_name = 'hacked'
+     where id = tests.user_id('[email protected]')
+     returning 1
+   ) select count(*)::int from r),
+  0,
   "SECURITY: alice cannot update bob's profile (0 rows)"
 );
 
 -- insert a row for bob: WITH CHECK rejects → SQLSTATE 42501
 select throws_ok(
   $$ insert into public.profiles (id, display_name)
-     values (tests.user_id('[email protected]'), 'evil') $$,
+     values (tests.user_id('[email protected]'), 'evil') $$,
   '42501',
   null,
   "SECURITY: alice cannot insert a profile for bob"
 );
 
 -- delete own row: no DELETE policy → filtered out, profile survives
-select results_eq(
-  $$ delete from public.profiles where id = tests.user_id('[email protected]') returning 1 $$,
-  $$ values (0) $$,
+select is(
+  (with r as (
+     delete from public.profiles
+     where id = tests.user_id('[email protected]')
+     returning 1
+   ) select count(*)::int from r),
+  0,
   'SECURITY: profile delete is denied via API (no policy)'
 );
 
 select tests.clear_authentication();
 
 -- ---------- bob sees only his row too ----------
-select tests.authenticate_as('[email protected]');
+select tests.authenticate_as('[email protected]');
 
 select is(
   (select count(*)::int from public.profiles),
