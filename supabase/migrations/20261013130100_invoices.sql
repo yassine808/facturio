@@ -87,6 +87,12 @@ create table public.invoice_counters (
 
 alter table public.invoice_counters enable row level security;
 
+-- Supabase hands every newly created table to anon/authenticated/service_role
+-- via default privileges, so "zero grants" must be revoked explicitly. Zero
+-- policies alone would only filter rows silently — a granted read returns an
+-- empty result, never an error — which is exactly the hole this closes.
+revoke all on public.invoice_counters from anon, authenticated, service_role;
+
 -- ---------------------------------------------------------------------------
 -- One rule function for insert and update (a single BEFORE trigger avoids
 -- any trigger-ordering questions between validation and allocation).

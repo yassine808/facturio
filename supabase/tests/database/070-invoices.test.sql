@@ -6,7 +6,7 @@
 
 begin;
 
-select plan(25);
+select plan(26);
 
 -- ---------- setup ----------
 select tests.make_user('alice');
@@ -166,6 +166,22 @@ select is(
   'draft -> void is allowed (abandon before sending)'
 );
 
+-- status is not in the insert grant, so the grant layer answers first: the
+-- app cannot even reference the column, let alone birth a non-draft invoice.
+select throws_ok(
+  $$ insert into public.invoices (org_id, client_id, status)
+     values (current_setting('test.org_a_id')::uuid,
+             current_setting('test.client_a')::uuid,
+             'sent') $$,
+  '42501',
+  null,
+  'SECURITY: status is not insertable (grants deny born-non-draft first)'
+);
+
+select tests.clear_authentication();
+
+-- The same insert as superuser: grants do not apply, so this reaches the
+-- trigger itself — the guard for privileged writers (service_role, psql).
 select throws_ok(
   $$ insert into public.invoices (org_id, client_id, status)
      values (current_setting('test.org_a_id')::uuid,
@@ -175,8 +191,6 @@ select throws_ok(
   'invoices start as drafts — sending allocates the number',
   'invoices cannot be born non-draft'
 );
-
-select tests.clear_authentication();
 
 -- ---------- bob: member + grants ----------
 select tests.authenticate_as(current_setting('test.bob_email'));
