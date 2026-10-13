@@ -59,6 +59,16 @@ insert into public.invoices (org_id, client_id, tax_rate_bps)
 values (current_setting('test.org_a_id')::uuid,
         current_setting('test.client_a')::uuid, 2000);
 
+-- Alice remembers her invoice id in a GUC: the outsider blocks below cannot
+-- resolve it with a subquery (their RLS hides org A), which would silently
+-- bind a null and turn the intended 42501 into a 23502 not-null violation.
+select set_config(
+  'test.invoice_a',
+  (select id::text from public.invoices
+   where client_id = current_setting('test.client_a')::uuid),
+  true
+);
+
 insert into public.invoice_items (org_id, invoice_id, description, quantity, unit_price_minor)
 values (current_setting('test.org_a_id')::uuid,
         (select id from public.invoices where client_id = current_setting('test.client_a')::uuid),
@@ -241,7 +251,7 @@ select is_empty(
 select throws_ok(
   $$ insert into public.invoice_items (org_id, invoice_id, description, quantity, unit_price_minor)
      values (current_setting('test.org_a_id')::uuid,
-             (select id from public.invoices where client_id = current_setting('test.client_a')::uuid),
+             current_setting('test.invoice_a')::uuid,
              'Hax', 1, 1) $$,
   '42501',
   null,
