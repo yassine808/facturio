@@ -203,6 +203,8 @@ select is(
 
 -- ---------- second owner unblocks the demotion path ----------
 -- (superuser inserts bob as the second owner)
+select tests.clear_authentication();
+
 insert into public.memberships (org_id, user_id, role)
 values (current_setting('test.team_id')::uuid, tests.user_id(current_setting('test.bob_email')), 'owner');
 

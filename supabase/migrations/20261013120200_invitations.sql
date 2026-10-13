@@ -81,7 +81,9 @@ begin
 
   insert into public.memberships (org_id, user_id, role)
   values (v_inv.org_id, v_uid, v_inv.role)
-  on conflict (org_id, user_id) do nothing;
+  -- conflict target by constraint name: `on conflict (org_id, user_id)` is
+  -- ambiguous here because RETURNS TABLE declares an org_id OUT parameter.
+  on conflict on constraint memberships_org_id_user_id_key do nothing;
 
   update public.invitations
      set accepted_at = now(), accepted_by = v_uid
@@ -129,4 +131,7 @@ create policy "invitations_delete"
 -- delete; a new invite is a new row.
 
 revoke all on public.invitations from anon, authenticated;
+-- anon: read grant kept, policies are `to authenticated` (zero rows) — see
+-- the organizations migration for the rationale.
+grant select on public.invitations to anon;
 grant select, insert, delete on public.invitations to authenticated;

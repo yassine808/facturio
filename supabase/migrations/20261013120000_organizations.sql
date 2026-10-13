@@ -258,6 +258,14 @@ create policy "memberships_delete"
 revoke all on public.organizations from anon, authenticated;
 revoke all on public.memberships from anon, authenticated;
 
+-- anon keeps the read grant; every policy above is `to authenticated`, so
+-- anon always reads zero rows. Denying the grant outright would make anon
+-- SELECTS raise 42501 instead of returning empty (grants are checked before
+-- RLS) — empties are both the friendlier API contract and the model Phase 1
+-- established for profiles via default privileges.
+grant select on public.organizations to anon;
+grant select on public.memberships to anon;
+
 grant select, insert on public.organizations to authenticated;
 grant update (name) on public.organizations to authenticated;
 

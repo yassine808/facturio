@@ -65,4 +65,7 @@ create policy "audit_logs_insert"
 -- No UPDATE/DELETE policies: the trail is append-only via the API.
 
 revoke all on public.audit_logs from anon, authenticated;
+-- anon: read grant kept, policies are `to authenticated` (zero rows) — see
+-- the organizations migration for the rationale.
+grant select on public.audit_logs to anon;
 grant select, insert on public.audit_logs to authenticated;
