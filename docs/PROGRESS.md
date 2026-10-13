@@ -8,8 +8,9 @@ Status log for the multi-tenant invoice SaaS. Updated at the end of every sessio
 complete, awaiting user review)
 
 Work lives on branch `feature/phase-3-core-domain` (PR #8). `main` still points at Phase 2
-(tag `v0.2`); the phase merge happens after review. CI runs on the PR — pgTAP included
-(9 test files once Phase 3 lands).
+(tag `v0.2`); the phase merge happens after review. CI is green on the PR (run 38471820173):
+all 9 checks pass and all 10 pgTAP files are ok — including the first-ever end-to-end
+application of the Phase 3 migration chain.
 
 ## Done
 
@@ -60,7 +61,7 @@ Work lives on branch `feature/phase-3-core-domain` (PR #8). `main` still points 
   OK, build OK; CI all 9 green (run 38455143709).
 - [Phase 3] Clients: archive-not-delete (no DELETE policy), member-writable, `org_id` not in the
   update grant. 5 migrations total in the phase; pgTAP files 060 (clients, 12), 070 (invoices
-  - numbering, 25), 080 (items + money pipeline, 21), 090 (payments, 17) = 75 assertions.
+  - numbering, 26), 080 (items + money pipeline, 21), 090 (payments, 17) = 76 assertions.
 - [Phase 3] Invoices + numbering (ADR-0006): gap-free per-(org, year) sequence allocated exactly
   once at draft→sent from a locked counter row; drafts unnumbered; rollback returns the number
   (savepoint test); transitions enforced in one rule function; overdue derived, never stored.
@@ -78,6 +79,11 @@ Work lives on branch `feature/phase-3-core-domain` (PR #8). `main` still points 
 - [Phase 3] ADR-0003 (money minor units + one rounding rule), ADR-0006 (gap-free numbering).
   Unit tests: money parse/format round-trip, tax percent→bps integer conversion, invoice draft
   schema rules (17 new tests; 43/43 green locally). Local gate: lint 0, tsc 0, build OK.
+- [Phase 3] First end-to-end migration + pgTAP application happened in CI only (no Docker
+  locally) and caught three real bugs: a composite-FK target added after the `CREATE TABLE`
+  that validates against it (42830), the missing counters revoke, and pgTAP API mismatches —
+  fixed in `176caa3`, `7ead7b0`, `ee13add`. Final run 38471820173: all 9 checks green, all 10
+  pgTAP files ok.
 
 ## Key lessons from Phase 1 CI debugging
 
@@ -155,6 +161,22 @@ throws_ok|like)\(`), not by eye — plans drifted twice during file growth.
   sums embed the invoice to group per currency (mixed-currency sums would be fake numbers).
 - **Name collisions with the Supabase factory:** a feature action called `createClient` forced
   aliasing the server factory (`createClient as createSupabaseClient`) at import sites.
+- **An FK target must exist before the referencing `CREATE TABLE`.** Postgres validates
+  composite FK targets when the referencing table is created, so `unique (id, org_id)` on
+  `clients` has to precede `create table invoices` (otherwise SQLSTATE 42830). Migrations
+  written without a local database can carry statement-order bugs for a long time — only the
+  first clean end-to-end application surfaces them.
+- **Supabase default privileges grant every new table to anon/authenticated/service_role.**
+  Every table needs an explicit `revoke all … from anon, authenticated`, and zero-policy RLS
+  alone is not a denial: a granted read returns an empty result, never an error. That is how
+  `invoice_counters` stayed silently readable despite a comment promising zero grants.
+- **pgTAP's regex assertion is `matches(anyelement, text, text)` — `like()` no longer
+  exists** in current pgTAP, and `is(anyelement, anyelement)` cannot unify a bigint column
+  with an untyped integer literal: every money assertion needs an explicit `::bigint`.
+- **Column grants are checked before BEFORE triggers.** Inserting `status` where `status`
+  is not in the insert grant raises `42501` before the born-draft trigger can raise `P0001`;
+  the test asserts both layers separately (member → 42501 grant denial, superuser → P0001
+  trigger message).
 
 ## Next
 
