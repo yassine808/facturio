@@ -9,33 +9,58 @@ begin;
 
 select plan(12);
 
--- ---------- setup (superuser) ----------
--- per-step diagnostics (TAP comments, no assertions): previous CI runs showed
--- the second create_user call silently producing no row, so every step of
--- setup reports the state it produced.
-select tests.create_user('[email protected]');
+-- ---------- setup (superuser): instrumented ----------
+-- Previous runs: exactly one user ever exists after two create_user calls and
+-- the surviving email varies run to run. This block reproduces the exact same
+-- statements with per-step state printed (NOTICE = immediate stderr, diag =
+-- TAP comment) so the mechanism is observable in one CI run.
 select diag(
-  'AFTER alice: users=' || (select count(*)::text from auth.users)
+  'BASELINE: users=' || (select count(*)::text from auth.users)
   || ' profiles=' || (select count(*)::text from public.profiles)
 );
 
-select tests.create_user('[email protected]');
+-- verbose clone of tests.create_user (identical body + raises)
+create or replace function tests.create_user_verbose(p_email text)
+returns uuid
+language plpgsql
+as $$
+declare
+  v_id uuid := gen_random_uuid();
+  v_deleted int;
+begin
+  raise notice 'verbose: p_email=[%] v_id=%', p_email, v_id;
+  delete from auth.users where email = p_email;
+  get diagnostics v_deleted = row_count;
+  raise notice 'verbose: deleted=%', v_deleted;
+  insert into auth.users (id, email, raw_user_meta_data)
+  values (v_id, p_email, '{}'::jsonb);
+  raise notice 'verbose: users now=%', (select count(*) from auth.users);
+  return v_id;
+end;
+$$;
+
 select diag(
-  'AFTER bob: users=' || (select count(*)::text from auth.users)
-  || ' profiles=' || (select count(*)::text from public.profiles)
-  || ' bob=' || coalesce(
-       (select id::text from auth.users where email = '[email protected]'),
-       'MISSING')
+  'STEP1 verbose alice: ' || tests.create_user_verbose('[email protected]')::text
+  || ' => ' || (select coalesce(string_agg(id::text || ':' || email, ' | '), 'EMPTY')
+                  from auth.users)
 );
 
--- isolate helper vs platform: identical insert without the function wrapper
-insert into auth.users (id, email, raw_user_meta_data)
-values (gen_random_uuid(), '[email protected]', '{}'::jsonb);
 select diag(
-  'AFTER raw bob: users=' || (select count(*)::text from auth.users)
-  || ' bob=' || coalesce(
-       (select id::text from auth.users where email = '[email protected]'),
-       'MISSING')
+  'STEP2 verbose bob: ' || tests.create_user_verbose('[email protected]')::text
+  || ' => ' || (select coalesce(string_agg(id::text || ':' || email, ' | '), 'EMPTY')
+                  from auth.users)
+);
+
+select diag(
+  'STEP3 plain alice: ' || tests.create_user('[email protected]')::text
+  || ' => ' || (select coalesce(string_agg(id::text || ':' || email, ' | '), 'EMPTY')
+                  from auth.users)
+);
+
+select diag(
+  'STEP4 plain bob: ' || tests.create_user('[email protected]')::text
+  || ' => ' || (select coalesce(string_agg(id::text || ':' || email, ' | '), 'EMPTY')
+                  from auth.users)
 );
 
 -- both users must exist before we count their profiles
