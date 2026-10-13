@@ -7,11 +7,36 @@
 
 begin;
 
-select plan(11);
+select plan(12);
 
 -- ---------- setup (superuser) ----------
 select tests.create_user('[email protected]');
 select tests.create_user('[email protected]');
+
+-- setup diagnostics (TAP comments, no assertions): make any setup failure
+-- explain itself on the first CI run instead of requiring a second one.
+select diag(
+  (select string_agg(format('user %s email=%s', id, email), E'\n')
+     from auth.users)
+);
+select diag(
+  (select string_agg(format('profile %s', id), E'\n')
+     from public.profiles)
+);
+select diag(
+  'auth.users triggers: ' || coalesce(
+    (select string_agg(tgname, ', ' order by tgname)
+       from pg_trigger
+      where tgrelid = 'auth.users'::regclass and not tgisinternal),
+    'NONE')
+);
+
+-- both users must exist before we count their profiles
+select is(
+  (select count(*)::int from auth.users),
+  2,
+  'setup: two users in auth.users'
+);
 
 -- trigger must have auto-created exactly one profile per user
 select is(

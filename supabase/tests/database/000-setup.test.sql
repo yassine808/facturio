@@ -79,6 +79,13 @@ begin
 end;
 $$;
 
+-- Persona roles must be able to CALL these helpers (schema USAGE + execute).
+-- Without this, any assertion calling tests.* as anon/authenticated dies with
+-- "permission denied for schema tests". Future functions: re-run the execute
+-- grant (usage grant persists on the schema).
+grant usage on schema tests to anon, authenticated;
+grant execute on all functions in schema tests to anon, authenticated;
+
 select plan(2);
 
 select ok(
