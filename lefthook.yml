@@ -1,0 +1,13 @@
+# Runs on every commit (installed by `lefthook install` via pnpm prepare).
+pre-commit:
+  jobs:
+    - name: typecheck
+      run: pnpm typecheck
+    - name: lint-staged-files
+      run: pnpm exec prettier --check {staged_files}
+      glob: "*.{md,json,yaml,yml}"
+
+commit-msg:
+  jobs:
+    - name: commitlint
+      run: pnpm exec commitlint --edit {1}

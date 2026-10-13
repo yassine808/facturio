@@ -1,0 +1,5 @@
+# Normalize line endings: LF in the repo (Windows dev + Linux CI read the same bytes).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
