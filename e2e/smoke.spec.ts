@@ -40,7 +40,12 @@ test.describe("smoke", () => {
     const blockers = results.violations.filter(
       (v) => v.impact === "serious" || v.impact === "critical",
     );
-    expect(blockers.map((v) => `${v.id}: ${v.help}`)).toEqual([]);
+    // one entry per failing element, so a failure names the exact node
+    expect(
+      blockers.flatMap((v) =>
+        v.nodes.map((n) => `${v.id} @ ${n.target.join(" ")}`),
+      ),
+    ).toEqual([]);
   });
 
   test("unknown route shows 404 page", async ({ page }) => {
