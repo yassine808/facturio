@@ -9,8 +9,11 @@ create extension if not exists pgtap with schema extensions;
 create schema if not exists tests;
 
 -- Create a row in auth.users (the profiles trigger fires automatically).
--- Idempotent: deletes any existing row first (cascade removes the profile),
--- so a rerun or a dirty database can never trip the unique email index.
+-- NOTE: deliberately does NOT delete a pre-existing row — observed on the CI
+-- local stack, `delete from auth.users where email = <x>` removed rows whose
+-- stored email was a DIFFERENT value (details in docs/PROGRESS.md). Deleting
+-- is therefore banned here; callers use per-run unique emails instead
+-- (see tests.make_user), which also makes reruns deterministic.
 create or replace function tests.create_user(p_email text)
 returns uuid
 language plpgsql
@@ -18,10 +21,26 @@ as $$
 declare
   v_id uuid := gen_random_uuid();
 begin
-  delete from auth.users where email = p_email;
   insert into auth.users (id, email, raw_user_meta_data)
   values (v_id, p_email, '{}'::jsonb);
   return v_id;
+end;
+$$;
+
+-- Create a user with a run-unique email and remember that email in a
+-- transaction-local GUC (test.<prefix>_email) so the rest of the test file
+-- can look the user up with current_setting('test.<prefix>_email') without
+-- hardcoding an address that might collide with stale rows.
+create or replace function tests.make_user(p_prefix text)
+returns uuid
+language plpgsql
+as $$
+declare
+  v_email text :=
+    p_prefix || '.' || substr(gen_random_uuid()::text, 1, 8) || '@test.example';
+begin
+  perform set_config('test.' || p_prefix || '_email', v_email, true);
+  return tests.create_user(v_email);
 end;
 $$;
 
@@ -89,8 +108,8 @@ grant execute on all functions in schema tests to anon, authenticated;
 select plan(2);
 
 select ok(
-  to_regprocedure('tests.create_user(text)') is not null,
-  'helpers: create_user loaded'
+  to_regprocedure('tests.make_user(text)') is not null,
+  'helpers: make_user loaded'
 );
 
 select ok(
