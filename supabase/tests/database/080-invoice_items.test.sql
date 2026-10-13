@@ -81,34 +81,34 @@ values (current_setting('test.org_a_id')::uuid,
 
 select is(
   (select line_total_minor from public.invoice_items where description = 'Design'),
-  20000,
+  20000::bigint,
   'line total = quantity * unit_price'
 );
 
 select is(
   (select line_total_minor from public.invoice_items where description = 'Consulting'),
-  14999,
+  14999::bigint,
   'rounding is half away from zero (1.5 * 9999 = 14998.5 -> 14999)'
 );
 
 select is(
   (select subtotal_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  34999,
+  34999::bigint,
   'subtotal = sum of line totals'
 );
 
 select is(
   (select tax_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  7000,
+  7000::bigint,
   'tax applies the same rounding rule (34999 * 20% = 6999.8 -> 7000)'
 );
 
 select is(
   (select total_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  41999,
+  41999::bigint,
   'total = subtotal + tax'
 );
 
@@ -117,7 +117,7 @@ update public.invoice_items set quantity = 3 where description = 'Design';
 select is(
   (select total_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  53999,
+  53999::bigint,
   'editing a line recomputes the invoice totals'
 );
 
@@ -126,14 +126,14 @@ delete from public.invoice_items where description = 'Consulting';
 select is(
   (select subtotal_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  30000,
+  30000::bigint,
   'deleting a line recomputes the subtotal'
 );
 
 select is(
   (select total_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  36000,
+  36000::bigint,
   'deleting a line recomputes the total'
 );
 
@@ -143,14 +143,14 @@ where client_id = current_setting('test.client_a')::uuid;
 select is(
   (select tax_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  3000,
+  3000::bigint,
   'changing the tax rate recomputes tax from the stored subtotal'
 );
 
 select is(
   (select total_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  33000,
+  33000::bigint,
   'changing the tax rate recomputes the total'
 );
 
@@ -194,7 +194,7 @@ select throws_ok(
 select is(
   (select total_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid),
-  33000,
+  33000::bigint,
   'the rejected edits left the sent invoice''s totals untouched'
 );
 
@@ -214,7 +214,7 @@ values (current_setting('test.org_a_id')::uuid,
 
 select is(
   (select line_total_minor from public.invoice_items where description = 'Hosting'),
-  10000,
+  10000::bigint,
   'member adds a line to a draft invoice'
 );
 
@@ -223,7 +223,7 @@ update public.invoice_items set quantity = 5 where description = 'Hosting';
 select is(
   (select total_minor from public.invoices
    where client_id = current_setting('test.client_a')::uuid and status = 'draft'),
-  12500,
+  12500::bigint,
   'member edit recomputes totals (no tax on this draft)'
 );
 

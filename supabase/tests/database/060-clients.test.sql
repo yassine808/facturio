@@ -95,8 +95,10 @@ select tests.authenticate_as(current_setting('test.bob_email'));
 insert into public.clients (org_id, name, email)
 values (current_setting('test.org_a_id')::uuid, 'Beta LLC', 'billing@beta.example');
 
+-- Bob sees the client he created; the archived Acme row is also visible on
+-- purpose (restoring needs it), so scope the count to active clients.
 select is(
-  (select count(*)::int from public.clients),
+  (select count(*)::int from public.clients where archived_at is null),
   1,
   'member creates a client and sees exactly it'
 );

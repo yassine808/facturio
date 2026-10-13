@@ -77,7 +77,7 @@ values (current_setting('test.org_a_id')::uuid, current_setting('test.client_a')
 update public.invoices set status = 'sent'
 where id in (select id from public.invoices order by created_at limit 1);
 
-select like(
+select matches(
   (select number from public.invoices where number is not null),
   '^INV-[0-9]{4}-0001$',
   'sending allocates INV-YYYY-0001'
@@ -121,7 +121,7 @@ where id in (
   order by created_at limit 1
 );
 
-select like(
+select matches(
   (select max(number) from public.invoices),
   '^INV-[0-9]{4}-0003$',
   'a rolled-back send does not burn a number (gap-free)'
