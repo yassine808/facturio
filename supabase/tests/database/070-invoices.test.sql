@@ -6,7 +6,7 @@
 
 begin;
 
-select plan(22);
+select plan(25);
 
 -- ---------- setup ----------
 select tests.make_user('alice');
@@ -232,6 +232,28 @@ select throws_ok(
   '42501',
   null,
   'SECURITY: counters are invisible to the app (no grant, zero-policy RLS)'
+);
+
+-- Frozen details: sent/paid/void invoices accept status moves only.
+select throws_ok(
+  $$ update public.invoices set notes = 'rewritten' where status = 'sent' $$,
+  'P0001',
+  'invoice details are frozen once sent',
+  'a sent invoice''s notes cannot be rewritten'
+);
+
+select throws_ok(
+  $$ update public.invoices set due_date = current_date + 30 where status = 'paid' $$,
+  'P0001',
+  'invoice details are frozen once sent',
+  'a paid invoice''s due date cannot be rewritten'
+);
+
+select throws_ok(
+  $$ update public.invoices set tax_rate_bps = 999 where status = 'void' $$,
+  'P0001',
+  'invoice details are frozen once sent',
+  'a void invoice''s tax rate cannot be rewritten'
 );
 
 select tests.clear_authentication();
