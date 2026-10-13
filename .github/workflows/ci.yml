@@ -62,7 +62,7 @@ jobs:
 
       # 7/9 — database: migrations from scratch + RLS (pgTAP) tests
       - name: "Check 7/9: Supabase up + migrations from scratch"
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v3
         with:
           version: latest
 
