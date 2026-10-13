@@ -4,13 +4,11 @@ Status log for the multi-tenant invoice SaaS. Updated at the end of every sessio
 
 ## Status
 
-**Current phase:** Phase 3 — Core domain: clients, invoices, items, payments (implementation
-complete, awaiting user review)
+**Current phase:** Phase 4 — Stripe billing (starting with ADR-0005 and the billing schema;
+the Stripe test account is still a user blocker for anything live)
 
-Work lives on branch `feature/phase-3-core-domain` (PR #8). `main` still points at Phase 2
-(tag `v0.2`); the phase merge happens after review. CI is green on the PR (run 38471820173):
-all 9 checks pass and all 10 pgTAP files are ok — including the first-ever end-to-end
-application of the Phase 3 migration chain.
+Phase 3 shipped: merged `--no-ff` as `3f4e304`, tagged `v0.3`, pushed. PR #8 closed as
+merged. CI green on the merge (all 9 checks, all 10 pgTAP files).
 
 ## Done
 
@@ -180,16 +178,17 @@ throws_ok|like)\(`), not by eye — plans drifted twice during file growth.
 
 ## Next
 
-- User reviews Phase 3 (branch `feature/phase-3-core-domain`, PR #8) → says "approved" →
-  `--no-ff` merge to `main` + tag `v0.3`.
-- Phase 4: Stripe billing (needs the Stripe test account first — user blocker).
+- Phase 4: Stripe billing — ADR-0005 (webhook-only source of truth), billing schema,
+  checkout + webhook handler with idempotency. Stripe test account needed before anything
+  live can be exercised (user blocker); schema, handler, and signature-verification tests
+  do not depend on it.
 - Before Phase 5: Resend account.
 - Docker Desktop still not installed locally → DB/e2e verified in CI only.
 
 ## Blockers
 
-- Waiting on user review of Phase 3 before merging (phase-gate rule).
-- Stripe test account (blocks Phase 4), Resend account (blocks Phase 5) — user action.
+- Stripe test account (blocks live Phase 4 verification), Resend account (blocks Phase 5) —
+  user action.
 - Docker Desktop (blocks local `db:*` / e2e runs) — user action; CI covers both meanwhile.
 - Dependabot branches on origin (setup-node-7, upload-artifact-7, gitleaks-action-3,
   pnpm/action-setup-6, supabase/setup-cli-3, dev-deps-*) — noted, awaiting user decision.
