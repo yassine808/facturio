@@ -2,8 +2,11 @@
 -- Personas: anon, outsider (authenticated, other user), owner.
 -- The runner is a superuser (bypasses RLS) — every assertion therefore runs
 -- under an explicit role + JWT claims, or it proves nothing.
--- Row-count assertions use WITH ... RETURNING + count: results_eq against
--- `values (0)` would compare an empty set with {(0)} and always fail.
+-- Row counts after DML are asserted with a follow-up SELECT: PostgreSQL only
+-- allows data-modifying WITH clauses at the TOP level of a statement, so
+-- `is((with r as (update ...)) ...)` is invalid SQL. Instead each DML runs as
+-- its own top-level statement (RLS filters it silently to 0 rows when denied)
+-- and the resulting state is checked afterwards.
 -- Users are created via tests.make_user (run-unique emails, no deletes —
 -- see 000-setup for why deletes are banned against auth.users).
 
@@ -59,27 +62,25 @@ select is_empty(
   'SECURITY: alice cannot see bob''s profile'
 );
 
--- update own row: allowed, 1 row affected
+-- update own row: allowed (policy USING = id), row must change
+update public.profiles
+   set display_name = 'Alice A'
+ where id = tests.user_id(current_setting('test.alice_email'));
+
 select is(
-  (with r as (
-     update public.profiles set display_name = 'Alice A' returning 1
-   ) select count(*)::int from r),
-  1,
+  (select display_name from public.profiles
+    where id = tests.user_id(current_setting('test.alice_email'))),
+  'Alice A',
   'alice can update her own profile'
 );
 
--- update bob's row: USING filters it out → 0 rows, no error
-select is(
-  (with r as (
-     update public.profiles set display_name = 'hacked'
-     where id = tests.user_id(current_setting('test.bob_email'))
-     returning 1
-   ) select count(*)::int from r),
-  0,
-  'SECURITY: alice cannot update bob''s profile (0 rows)'
-);
+-- update bob's row: RLS USING filters it out -> 0 rows, no error.
+-- Verified globally after the persona blocks ('hacked' must exist nowhere).
+update public.profiles
+   set display_name = 'hacked'
+ where id = tests.user_id(current_setting('test.bob_email'));
 
--- insert a row for bob: WITH CHECK rejects → SQLSTATE 42501
+-- insert a row for bob: WITH CHECK rejects -> SQLSTATE 42501
 select throws_ok(
   $$ insert into public.profiles (id, display_name)
      values (tests.user_id(current_setting('test.bob_email')), 'evil') $$,
@@ -88,14 +89,14 @@ select throws_ok(
   'SECURITY: alice cannot insert a profile for bob'
 );
 
--- delete own row: no DELETE policy → filtered out, profile survives
+-- delete own row: no DELETE policy -> filtered out, profile survives
+delete from public.profiles
+ where id = tests.user_id(current_setting('test.alice_email'));
+
 select is(
-  (with r as (
-     delete from public.profiles
-     where id = tests.user_id(current_setting('test.alice_email'))
-     returning 1
-   ) select count(*)::int from r),
-  0,
+  (select count(*)::int from public.profiles
+    where id = tests.user_id(current_setting('test.alice_email'))),
+  1,
   'SECURITY: profile delete is denied via API (no policy)'
 );
 
@@ -111,6 +112,13 @@ select is(
 );
 
 select tests.clear_authentication();
+
+-- ---------- superuser: global post-conditions ----------
+select is(
+  (select count(*)::int from public.profiles where display_name = 'hacked'),
+  0,
+  'SECURITY: alice update targeting bob''s profile affected no row'
+);
 
 select * from finish();
 
