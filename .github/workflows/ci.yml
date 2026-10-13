@@ -16,7 +16,11 @@ jobs:
     env:
       CI: "1"
     steps:
+      # fetch-depth: 0 is REQUIRED — gitleaks (check 6/9) scans a commit range
+      # that starts before HEAD; a shallow clone doesn't have those objects.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: pnpm/action-setup@v4
         # version comes from package.json "packageManager"
