@@ -18,6 +18,13 @@
 
 create type public.invoice_status as enum ('draft', 'sent', 'paid', 'void');
 
+-- The composite FK inside create table below needs a matching unique target
+-- on clients — (id, org_id), not just the primary key on id. Postgres
+-- validates FK targets when the referencing table is created, so this
+-- constraint must already exist by then (SQLSTATE 42830 otherwise).
+alter table public.clients
+  add constraint clients_id_org_unique unique (id, org_id);
+
 create table public.invoices (
   id uuid primary key default gen_random_uuid(),
   org_id uuid not null references public.organizations (id) on delete cascade,
@@ -58,12 +65,10 @@ create trigger invoices_set_updated_at
 create index invoices_org_idx on public.invoices (org_id);
 create index invoices_client_idx on public.invoices (client_id);
 
--- The composite FKs need matching unique constraints: (id, org_id), not just
--- the primary key on id. One here for clients, one below for invoices itself
--- (invoice_items references it in the next migration).
-alter table public.clients
-  add constraint clients_id_org_unique unique (id, org_id);
-
+-- Same story for invoices itself: invoice_items and payments reference
+-- (id, org_id) in the next migrations, so the target must exist here.
+-- (The clients-side constraint of the same kind sits before create table
+-- above, where invoices_client_same_org needs it.)
 alter table public.invoices
   add constraint invoices_id_org_unique unique (id, org_id);
 
