@@ -10,11 +10,13 @@ Status: **awaiting approval** · Created: 2026-10-13 · Owner: yassine808
 ## 1. Scope
 
 ### Product (confirmed)
+
 Facturio: freelancers and small teams manage clients, issue professional invoices
 (line items, tax, MAD/EUR/USD), track manual payments, and collaborate under one
 organization (tenant) with roles. Billing via Stripe Free/Pro plans with enforced limits.
 
 ### In scope (MVP)
+
 - Auth: email+password (verified), password reset, Google + GitHub OAuth.
 - Organizations (tenants), members, roles (owner/admin/member), expiring single-use invites.
 - Clients (archive, not delete), invoices (draft → sent → paid/overdue/void), line items,
@@ -26,6 +28,7 @@ organization (tenant) with roles. Billing via Stripe Free/Pro plans with enforce
 - Docs: README, ARCHITECTURE, DATA_MODEL, THREAT_MODEL, ADRs.
 
 ### Out of scope (non-goals)
+
 Native mobile, multi-region, legal e-invoicing compliance (portfolio product — disclaimer
 in UI), accounting ledger, SSO/SAML, real-time collaboration, bank sync.
 Stretch only: French UI, JSON/CSV export.
@@ -34,16 +37,16 @@ Stretch only: French UI, JSON/CSV export.
 
 ## 2. Confirmed decisions (Phase 0 answers)
 
-| # | Question | Answer |
-|---|---|---|
-| 1 | Product name | **Facturio** (npm name free; exact .com/.app taken — ship on `facturio.vercel.app`, revisit domain at launch) |
-| 2 | Core domain | Confirm default: invoice & client manager |
-| 3 | License / merge flow | **MIT**, local merges with `--no-ff`, tag per phase (decided by builder, per user) |
-| 4 | Accounts ready | ✅ Supabase (free), ✅ Vercel. ❌ Stripe test mode — needed before Phase 4. ❌ Resend — needed before Phase 5 (free tier fine) |
-| 5 | Time budget | No fixed deadline; milestones sized in effort estimates, not dates |
-| 6 | Docker | Docker Desktop **to be installed by user** (link provided; nothing installed by agent) |
-| 7 | UI taste | Use `impeccable` + `ui-ux-pro-max` skills when building UI; dark-mode default with toggle (assumed, logged as decision) |
-| 8 | Constraints | None beyond brief |
+| #   | Question             | Answer                                                                                                                         |
+| --- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | Product name         | **Facturio** (npm name free; exact .com/.app taken — ship on `facturio.vercel.app`, revisit domain at launch)                  |
+| 2   | Core domain          | Confirm default: invoice & client manager                                                                                      |
+| 3   | License / merge flow | **MIT**, local merges with `--no-ff`, tag per phase (decided by builder, per user)                                             |
+| 4   | Accounts ready       | ✅ Supabase (free), ✅ Vercel. ❌ Stripe test mode — needed before Phase 4. ❌ Resend — needed before Phase 5 (free tier fine) |
+| 5   | Time budget          | No fixed deadline; milestones sized in effort estimates, not dates                                                             |
+| 6   | Docker               | Docker Desktop **to be installed by user** (link provided; nothing installed by agent)                                         |
+| 7   | UI taste             | Use `impeccable` + `ui-ux-pro-max` skills when building UI; dark-mode default with toggle (assumed, logged as decision)        |
+| 8   | Constraints          | None beyond brief                                                                                                              |
 
 ---
 
@@ -52,29 +55,30 @@ Stretch only: French UI, JSON/CSV export.
 Versions verified against official docs on 2026-10-13. Exact pins re-checked at scaffold
 (Phase 1) and recorded in `package.json` + lockfile.
 
-| Layer | Choice | Version / notes | Why (alternatives: rejected because …) |
-|---|---|---|---|
-| Runtime | Node.js | v24.15.0 (installed) | LTS line, matches Vercel |
-| Package manager | pnpm | 11.1.3 (installed) | Brief default; fast, strict node_modules |
-| Framework | Next.js (App Router) | **16.x stable** | Brief default. ⚠️ Verified: middleware renamed → **`proxy.ts`** (Next 16); Supabase session refresh goes in `proxy.ts`. Next 15 `middleware.ts` is deprecated |
-| Language | TypeScript strict | 5.x | Brief default |
-| UI | Tailwind CSS + shadcn/ui | current | Brief default; shadcn = owned code, no runtime dep |
-| Auth/DB | Supabase (Postgres, Auth, RLS) | `@supabase/ssr` 0.12.5 | Brief default. ⚠️ Verified: server-side identity via **`auth.getClaims()`** (validates JWT) — `getSession()` must not gate access |
-| Payments | Stripe (test mode) | API `2026-05-27.dahlia`, `stripe` SDK current | Brief default. Verified: raw body (`req.text()`) for signature; idempotency via unique `event.id`; do **not** order events by `created` (Stripe docs) |
-| Email (prod) | Resend | free tier (100/day) | Simple TS SDK. Local dev: **Mailpit** local inbox (no Docker needed? — Mailpit runs as binary; verify in Phase 5). Alternative: Postmark (rejected: no free-tier advantage for this scope) |
-| PDF | `@react-pdf/renderer` | current | Server-side, no headless browser, works on Vercel serverless. Alternative: Puppeteer/Chrome (rejected: heavy, cold starts) |
-| Validation | Zod | v4 line (verify) | Brief default; one schema for client+server |
-| Forms | react-hook-form + zod resolver | current | Brief default |
-| Lint/format | ESLint (next config) + Prettier | current | Brief default |
-| Git hooks | **lefthook** | current | Cross-platform (Windows-friendly, Go binary) — husky/shell hooks are flaky on Windows |
-| Commit lint | commitlint (conventional) | current | Brief default |
-| Unit/integration tests | Vitest | current | Brief default; fast, ESM-native |
-| DB tests | pgTAP via `supabase test db` | Supabase CLI latest | Official path; runs migrations from scratch in CI |
-| E2E | Playwright + @axe-core/playwright | current | Brief default |
-| CI/CD | GitHub Actions + Vercel | — | Brief default |
-| Secrets scan | gitleaks + `pnpm audit` | CI | Brief default |
+| Layer                  | Choice                            | Version / notes                               | Why (alternatives: rejected because …)                                                                                                                                                     |
+| ---------------------- | --------------------------------- | --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Runtime                | Node.js                           | v24.15.0 (installed)                          | LTS line, matches Vercel                                                                                                                                                                   |
+| Package manager        | pnpm                              | 11.1.3 (installed)                            | Brief default; fast, strict node_modules                                                                                                                                                   |
+| Framework              | Next.js (App Router)              | **16.x stable**                               | Brief default. ⚠️ Verified: middleware renamed → **`proxy.ts`** (Next 16); Supabase session refresh goes in `proxy.ts`. Next 15 `middleware.ts` is deprecated                              |
+| Language               | TypeScript strict                 | 5.x                                           | Brief default                                                                                                                                                                              |
+| UI                     | Tailwind CSS + shadcn/ui          | current                                       | Brief default; shadcn = owned code, no runtime dep                                                                                                                                         |
+| Auth/DB                | Supabase (Postgres, Auth, RLS)    | `@supabase/ssr` 0.12.5                        | Brief default. ⚠️ Verified: server-side identity via **`auth.getClaims()`** (validates JWT) — `getSession()` must not gate access                                                          |
+| Payments               | Stripe (test mode)                | API `2026-05-27.dahlia`, `stripe` SDK current | Brief default. Verified: raw body (`req.text()`) for signature; idempotency via unique `event.id`; do **not** order events by `created` (Stripe docs)                                      |
+| Email (prod)           | Resend                            | free tier (100/day)                           | Simple TS SDK. Local dev: **Mailpit** local inbox (no Docker needed? — Mailpit runs as binary; verify in Phase 5). Alternative: Postmark (rejected: no free-tier advantage for this scope) |
+| PDF                    | `@react-pdf/renderer`             | current                                       | Server-side, no headless browser, works on Vercel serverless. Alternative: Puppeteer/Chrome (rejected: heavy, cold starts)                                                                 |
+| Validation             | Zod                               | v4 line (verify)                              | Brief default; one schema for client+server                                                                                                                                                |
+| Forms                  | react-hook-form + zod resolver    | current                                       | Brief default                                                                                                                                                                              |
+| Lint/format            | ESLint (next config) + Prettier   | current                                       | Brief default                                                                                                                                                                              |
+| Git hooks              | **lefthook**                      | current                                       | Cross-platform (Windows-friendly, Go binary) — husky/shell hooks are flaky on Windows                                                                                                      |
+| Commit lint            | commitlint (conventional)         | current                                       | Brief default                                                                                                                                                                              |
+| Unit/integration tests | Vitest                            | current                                       | Brief default; fast, ESM-native                                                                                                                                                            |
+| DB tests               | pgTAP via `supabase test db`      | Supabase CLI latest                           | Official path; runs migrations from scratch in CI                                                                                                                                          |
+| E2E                    | Playwright + @axe-core/playwright | current                                       | Brief default                                                                                                                                                                              |
+| CI/CD                  | GitHub Actions + Vercel           | —                                             | Brief default                                                                                                                                                                              |
+| Secrets scan           | gitleaks + `pnpm audit`           | CI                                            | Brief default                                                                                                                                                                              |
 
 ### ⚠️ Research findings baked into the plan
+
 1. **Next 16 `proxy.ts`**: route protection and Supabase cookie refresh live in `proxy.ts`
    (not `middleware.ts`). Auth check inside it = `getClaims()`/`getUser()`, never `getSession()`.
 2. **pgTAP superuser trap**: `supabase test db` connects as superuser (bypasses RLS). Every
@@ -119,6 +123,7 @@ As specified in the brief (section 7.2): `profiles`, `organizations`, `membershi
 `subscriptions`, `stripe_events`, `audit_logs`, `platform_admins`.
 
 Refinements:
+
 - `org_id` denormalized onto `invoice_items` **with composite FK**
   (`(invoice_id, org_id)` → `invoices(id, org_id)`) so a child can never reference another
   tenant's parent — checked at DB level, keeps RLS policies single-column and indexable.
@@ -146,11 +151,11 @@ Refinements:
 
 ## 7. Environment strategy (free tiers)
 
-| Env | Backend | Frontend | Notes |
-|---|---|---|---|
-| Local | Supabase CLI + Docker (user installs) | `pnpm dev` | Mailpit inbox, `stripe listen` for webhooks |
-| Preview | Supabase project #1 (free tier allows 2) | Vercel preview per PR/push | Demo/resettable data via seed |
-| Production | Supabase project #2 (free) | Vercel main | Only after Phase 7 checklist |
+| Env        | Backend                                  | Frontend                   | Notes                                       |
+| ---------- | ---------------------------------------- | -------------------------- | ------------------------------------------- |
+| Local      | Supabase CLI + Docker (user installs)    | `pnpm dev`                 | Mailpit inbox, `stripe listen` for webhooks |
+| Preview    | Supabase project #1 (free tier allows 2) | Vercel preview per PR/push | Demo/resettable data via seed               |
+| Production | Supabase project #2 (free)               | Vercel main                | Only after Phase 7 checklist                |
 
 - Migrations only via `supabase/migrations`; deploy to hosted DBs = manual, approved workflow.
 - CI (GitHub Actions, ubuntu): frozen install → lint → typecheck → unit → `supabase start` →
@@ -160,31 +165,31 @@ Refinements:
 
 ## 8. Milestone plan (effort, no dates)
 
-| Phase | Deliverables (abbreviated) | Est. effort | Gate |
-|---|---|---|---|
-| 0 Plan | this document | done pending approval | user approves |
-| 1 Foundation | scaffold, hooks, CI green, env validation, local Supabase, `profiles` migration, auth flows, app shell, `/api/health`, README skeleton | 8–10 h | fresh clone → running in ≤10 min; signup/in/out/reset works; CI green |
-| 2 Tenancy & roles | orgs, memberships, invites, org switcher, RBAC (UI+server), audit base, RLS matrix | 10–12 h | outsider blocked; last owner protected; expired/used invites rejected |
-| 3 Core domain | clients, invoices, items, totals, numbering concurrency, payments, overdue, dashboard | 14–16 h | money/numbering unit-tested; RLS extended |
-| 4 Billing | Stripe plans script, Checkout, Portal, webhooks, entitlements, billing page | 10–12 h | webhook tests (dup/out-of-order/bad sig); limits server-enforced |
-| 5 Documents | PDF, email, share link | 6–8 h | PDF test, share link isolated + rate-limited, dev inbox works |
-| 6 Admin | usage page, audit viewer, platform admin | 5–6 h | non-admins 404/403; access audited |
-| 7 Harden & launch | security pass, rate limits, Lighthouse+axe, demo account, prod deploy, README, CHANGELOG, v1.0.0 | 8–10 h | §14 definition of done project-wide |
-| **Total** | | **~61–74 h** | |
+| Phase             | Deliverables (abbreviated)                                                                                                             | Est. effort           | Gate                                                                  |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------- | --------------------- | --------------------------------------------------------------------- |
+| 0 Plan            | this document                                                                                                                          | done pending approval | user approves                                                         |
+| 1 Foundation      | scaffold, hooks, CI green, env validation, local Supabase, `profiles` migration, auth flows, app shell, `/api/health`, README skeleton | 8–10 h                | fresh clone → running in ≤10 min; signup/in/out/reset works; CI green |
+| 2 Tenancy & roles | orgs, memberships, invites, org switcher, RBAC (UI+server), audit base, RLS matrix                                                     | 10–12 h               | outsider blocked; last owner protected; expired/used invites rejected |
+| 3 Core domain     | clients, invoices, items, totals, numbering concurrency, payments, overdue, dashboard                                                  | 14–16 h               | money/numbering unit-tested; RLS extended                             |
+| 4 Billing         | Stripe plans script, Checkout, Portal, webhooks, entitlements, billing page                                                            | 10–12 h               | webhook tests (dup/out-of-order/bad sig); limits server-enforced      |
+| 5 Documents       | PDF, email, share link                                                                                                                 | 6–8 h                 | PDF test, share link isolated + rate-limited, dev inbox works         |
+| 6 Admin           | usage page, audit viewer, platform admin                                                                                               | 5–6 h                 | non-admins 404/403; access audited                                    |
+| 7 Harden & launch | security pass, rate limits, Lighthouse+axe, demo account, prod deploy, README, CHANGELOG, v1.0.0                                       | 8–10 h                | §14 definition of done project-wide                                   |
+| **Total**         |                                                                                                                                        | **~61–74 h**          |                                                                       |
 
 ## 9. Risk register
 
-| # | Risk | Sev | Mitigation |
-|---|---|---|---|
-| R1 | Docker Desktop install issues on Windows (WSL2) | high | Install early (already requested); if blocked, fallback: hosted Supabase only (logged trade-off) |
-| R2 | Supabase/Next.js fast-changing APIs → stale patterns | med | Docs re-checked at each phase start; versions recorded |
-| R3 | pgTAP superuser trap → false-green RLS tests | high | Mandatory role-switch helper; assert `current_user = 'authenticated'` in test blocks |
-| R4 | Stripe test account not created yet | med | Needed before Phase 4; user creates (needs bank-less test signup) |
-| R5 | Free member cap (1) vs demo "invite teammate" flow | med | Demo path: test-mode upgrade to Pro before inviting; documented in README demo script |
-| R6 | Gap-free numbering under concurrency | med | Allocate inside transaction with `FOR UPDATE` on `invoice_counters`; pgTAP concurrency test |
-| R7 | Windows dev vs Linux CI differences (line endings, hooks) | low | `.gitattributes`, lefthook, CI as source of truth |
-| R8 | No deadline → scope creep | med | Phase gates; stretch items explicitly last |
-| R9 | Domain taken (facturio.com/.app) | low | Ship on vercel.app; domain decision at launch |
+| #   | Risk                                                      | Sev  | Mitigation                                                                                       |
+| --- | --------------------------------------------------------- | ---- | ------------------------------------------------------------------------------------------------ |
+| R1  | Docker Desktop install issues on Windows (WSL2)           | high | Install early (already requested); if blocked, fallback: hosted Supabase only (logged trade-off) |
+| R2  | Supabase/Next.js fast-changing APIs → stale patterns      | med  | Docs re-checked at each phase start; versions recorded                                           |
+| R3  | pgTAP superuser trap → false-green RLS tests              | high | Mandatory role-switch helper; assert `current_user = 'authenticated'` in test blocks             |
+| R4  | Stripe test account not created yet                       | med  | Needed before Phase 4; user creates (needs bank-less test signup)                                |
+| R5  | Free member cap (1) vs demo "invite teammate" flow        | med  | Demo path: test-mode upgrade to Pro before inviting; documented in README demo script            |
+| R6  | Gap-free numbering under concurrency                      | med  | Allocate inside transaction with `FOR UPDATE` on `invoice_counters`; pgTAP concurrency test      |
+| R7  | Windows dev vs Linux CI differences (line endings, hooks) | low  | `.gitattributes`, lefthook, CI as source of truth                                                |
+| R8  | No deadline → scope creep                                 | med  | Phase gates; stretch items explicitly last                                                       |
+| R9  | Domain taken (facturio.com/.app)                          | low  | Ship on vercel.app; domain decision at launch                                                    |
 
 ## 10. ADRs to write (in docs/adr/)
 

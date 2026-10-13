@@ -1,39 +1,73 @@
 # AGENTS.md — Conventions for AI Agents
 
-Project: multi-tenant SaaS invoice & client manager (portfolio project for yassine808).
-Full brief: see the original build brief (supersedes this file where more specific).
+Project: **Facturio** — multi-tenant SaaS invoice & client manager (portfolio for yassine808).
+The original build brief supersedes this file where more specific. Current phase/blockers: `docs/PROGRESS.md`.
 
 ## Session continuity
-- Start of session: read `AGENTS.md`, `docs/PLAN.md`, `docs/PROGRESS.md`.
-- End of session: update `docs/PROGRESS.md` (done / next / blockers / decisions).
 
-## Non-negotiable rules
-1. **Plan first.** No application code until Phase 0 plan (`docs/PLAN.md`) is approved.
-2. **One phase at a time.** Stop at each phase end: summarize (what was built, how to run, test results, next) and wait for review.
-3. **Verify, don't assume.** Before saying "done": run lint, typecheck, tests, build — report real results. Say plainly when something is skipped or fails.
-4. **Check current docs.** Next.js / Supabase / Stripe change fast. Read official docs before using an API. Record versions in `docs/PLAN.md`.
-5. **Ask rarely, ask well.** Default: pick sensible option, log it in `docs/PROGRESS.md` (Decisions), continue. Ask only for: destructive/irreversible actions, costs money, secrets, security-sensitive trade-offs, scope changes.
-6. **Small commits**, one concern each, Conventional Commits.
-7. **Keep it simple.** No microservices, no premature abstraction. Major dependency ⇒ short ADR.
-8. **No fake progress.** No TODO stubs as finished work, no mock data in production paths. Demo data only via seed script.
-9. **Safety.** No destructive commands, no production data, no secrets in code/logs, never commit `.env*` (only `.env.example`), announce anything global before installing.
-10. Everything (code, comments, docs, commits) in **English**.
+- Start: read `AGENTS.md`, `docs/PLAN.md`, `docs/PROGRESS.md`.
+- End: update `docs/PROGRESS.md` (done / next / blockers / decisions).
+
+## Commands (pnpm only, never npm/yarn)
+
+```
+pnpm lint && pnpm typecheck && pnpm test && pnpm check:env   # local gate before claiming "done"
+pnpm build                                                    # needs .env present (placeholders OK locally)
+pnpm dev                                                      # next dev on :3000
+pnpm exec next typegen                                        # FIX: first typecheck fails with TS2304 'LayoutProps'
+                                                             # until route types are generated (run once after clone)
+pnpm db:start → pnpm db:env → pnpm db:reset → pnpm test:db    # local Supabase flow (needs Docker)
+pnpm test:e2e                                                 # Playwright; builds+starts server unless PLAYWRIGHT_BASE_URL set
+```
+
+- Verify order matters: `lint → typecheck → test → check:env → build`. Report real results; say plainly when
+  something fails or is skipped.
+- **Docker is not installed on this Windows machine** → `db:start/reset/test:db/types` and full e2e cannot run
+  locally. CI (ubuntu, Docker available) is the verification path for those — do not claim them locally.
+- CI = 9 checks in `.github/workflows/ci.yml` (lint, typecheck, vitest, check:env, audit, gitleaks, migrations +
+  pgTAP, build, e2e). If CI fails: stop, read the actual log, diagnose — never guess a fix and re-run blindly.
+
+## Environment & secrets
+
+- Only `.env.example` is tracked. `.env` / `.env.local` are gitignored — never commit them, never paste real
+  keys into code, logs, or docs. `pnpm check:env` enforces this (plus secret patterns, env-var drift).
+- `.env` exists locally with placeholders; after `pnpm db:start` run `pnpm db:env` to write real local keys
+  into `.env.local` (it overwrites, never commits).
+
+## Next.js 16 / Supabase quirks (easy to get wrong)
+
+- `src/proxy.ts` — NOT `middleware.ts` (renamed in Next 16). It refreshes the session cookie and gates
+  `/app/*` + `/admin/*`; on redirect it must carry `supabaseResponse` cookies across.
+- Server auth: `supabase.auth.getUser()` (verifies with Auth server). Never `getSession()` — trusts the cookie.
+- `cacheComponents` is deliberately OFF in `next.config.ts` (fully dynamic app) — don't re-enable without an ADR.
+- Dark mode = `html class="dark"` + `@custom-variant dark` in `globals.css`, not OS preference.
+- Email confirmation link → `/auth/confirm?token_hash=…` (verifyOtp); OAuth → `/auth/callback` (PKCE code).
+
+## Database / RLS
+
+- Every new table: RLS enabled, default deny, one policy per operation, plus a pgTAP test in
+  `supabase/tests/database/` (migrations only in `supabase/migrations/`).
+- **pgTAP superuser trap**: test runner is superuser (bypasses RLS). Every assertion must first
+  `set local role` + set `request.jwt.claims` (helpers in `000-setup.test.sql`) or results are false-green.
+  Test both `USING` (reads/updates → `results_eq`/`is_empty`) and `WITH CHECK` (bad inserts → `throws_ok '42501'`).
+- Money = integer minor units + ISO 4217. Never floats.
 
 ## Git
-- Identity (local config, never commit as anyone else):
-  - `user.name`: `yassine808`
-  - `user.email`: `166349232+yassine808@users.noreply.github.com`
+
+- Identity (local config, never commit as anyone else): `yassine808` / `166349232+yassine808@users.noreply.github.com`
 - Remote: `origin` = https://github.com/yassine808/project1.git
-- `main` always deployable. Branches: `feat/…`, `fix/…`, `chore/…`, `docs/…`.
-- Merge locally with `--no-ff` unless told otherwise. Tag `v0.x` per phase end, `v1.0.0` at launch.
+- Add files **individually** (no `git add .`). Small Conventional Commits (commitlint runs via lefthook).
+- `main` always deployable; branches `feat/…`, `fix/…`, `chore/…`, `docs/…`; merge `--no-ff`; tag `v0.x` per phase.
+- Line endings pinned LF via `.gitattributes` (Windows dev + Linux CI).
 
-## Code conventions
-- TypeScript `strict`, English comments that explain *why* (no clever one-liners).
-- Domain logic in `src/features/*`, framework-agnostic and unit-testable.
-- Zod validation at every boundary; server-side authorization in every server action.
-- Money = integer minor units + ISO 4217 currency. Never floats.
-- Every new table: RLS enabled, one policy per operation, default deny, pgTAP tests.
-- Non-obvious decisions get a short explanation (why, alternatives, trade-offs) — assume junior-to-mid audience.
+## Workflow
 
-## Repo layout target
-See section 11 of the build brief (docs/, supabase/, src/, e2e/, scripts/, .github/).
+- **One phase at a time.** Stop at each phase end: summarize (built / how tested / real results / next), wait
+  for review. No fake progress: no TODO stubs as finished, no mock data in prod paths (demo data = seed only).
+- Ask rarely, ask well: default is pick a sensible option, log it in `docs/PROGRESS.md` (Decisions), continue.
+  Ask only for destructive/irreversible actions, money, secrets, security trade-offs, scope changes.
+- Everything (code, comments, docs, commits) in **English**. Comments explain _why_, junior-to-mid audience.
+- Domain logic lives in `src/features/*` (framework-agnostic, unit-testable). Zod at every boundary;
+  authorization re-checked in every server action. Major dependency ⇒ short ADR in `docs/adr/`.
+- Read current official docs before using Next/Supabase/Stripe APIs — they change fast (versions pinned in
+  `docs/PLAN.md`).
