@@ -43,6 +43,8 @@ select is(
   'exactly one subscription row per org'
 );
 
+select tests.clear_authentication();
+
 -- Superuser: bob joins org A; org id goes into a transaction-local GUC so
 -- persona blocks never use an RLS-filtered subquery (see 070 lesson).
 insert into public.memberships (org_id, user_id, role)
