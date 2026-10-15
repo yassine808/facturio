@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { currentEmailConfig } from "@/features/email/config";
+import { EmailInvoiceForm } from "@/features/email/email-form";
 import {
   DeletePaymentForm,
   InvoiceTransitionForm,
@@ -66,6 +68,7 @@ export default async function InvoiceDetailPage({
       ? await listShareLinks(supabase, org.id, invoice.id)
       : [];
   const nowIso = new Date().toISOString();
+  const emailConfig = currentEmailConfig();
 
   // Draft editing needs the client dropdown; an archived (or deleted) client
   // the draft still points at must stay selectable, so prepend it if missing.
@@ -281,6 +284,19 @@ export default async function InvoiceDetailPage({
                   Download PDF
                 </a>
               </div>
+              {sent &&
+                (emailConfig.mode === "disabled" ? (
+                  <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                    Email delivery isn&apos;t configured on this server — download the
+                    PDF or use a share link instead.
+                  </p>
+                ) : (
+                  <EmailInvoiceForm
+                    orgSlug={org.slug}
+                    invoiceId={invoice.id}
+                    to={invoice.clients?.email ?? ""}
+                  />
+                ))}
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 Share links let your client open this invoice without an account — the
                 raw token is shown once and the link can be revoked at any time.

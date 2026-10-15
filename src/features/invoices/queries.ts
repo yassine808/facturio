@@ -38,7 +38,7 @@ const invoiceDetailRow = z.object({
   notes: z.string().nullable(),
   sent_at: z.string().nullable(),
   created_at: z.string(),
-  clients: z.object({ name: z.string() }).nullable(),
+  clients: z.object({ name: z.string(), email: z.string().nullable() }).nullable(),
 });
 export type InvoiceDetail = z.infer<typeof invoiceDetailRow>;
 
@@ -110,7 +110,7 @@ export async function getInvoice(
     .from("invoices")
     .select(`id, number, status, client_id, currency, subtotal_minor, tax_rate_bps,
               tax_minor, total_minor, issue_date, due_date, notes, sent_at,
-              created_at, clients ( name )`)
+              created_at, clients ( name, email )`)
     .eq("org_id", orgId)
     .eq("id", invoiceId)
     .maybeSingle();

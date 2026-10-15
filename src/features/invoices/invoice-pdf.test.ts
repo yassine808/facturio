@@ -19,7 +19,7 @@ const fixture: InvoicePdfProps = {
     issue_date: "2026-10-01",
     due_date: "2026-10-15",
     notes: "Thanks for your business.",
-    clients: { name: "Globex Corp" },
+    clients: { name: "Globex Corp", email: "ap@globex.test" },
   },
   items: [
     {
