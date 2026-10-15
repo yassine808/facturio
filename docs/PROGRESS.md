@@ -4,8 +4,9 @@ Status log for the multi-tenant invoice SaaS. Updated at the end of every sessio
 
 ## Status
 
-**Current phase:** Phase 4 — Stripe billing (starting with ADR-0005 and the billing schema;
-the Stripe test account is still a user blocker for anything live)
+**Current phase:** Phase 4 — Stripe billing (implementation complete on branch
+`feature/phase-4-billing`, PR #9; awaiting CI + user review). Live Stripe verification waits
+on the user's test account — schema, handler, and tests need no account.
 
 Phase 3 shipped: merged `--no-ff` as `3f4e304`, tagged `v0.3`, pushed. PR #8 closed as
 merged. CI green on the merge (all 9 checks, all 10 pgTAP files).
@@ -82,6 +83,35 @@ merged. CI green on the merge (all 9 checks, all 10 pgTAP files).
   that validates against it (42830), the missing counters revoke, and pgTAP API mismatches —
   fixed in `176caa3`, `7ead7b0`, `ee13add`. Final run 38471820173: all 9 checks green, all 10
   pgTAP files ok.
+- [Phase 4] ADR-0005 (Stripe = source of truth via webhooks only): `subscriptions` is the read
+  model — born `free` by a definer trigger on org insert, select-only for the app (no write
+  grants), written exclusively by the webhook handler through the new service-role client
+  (`src/lib/supabase/service-role.ts`, the only RLS-bypassing client in the repo).
+  `stripe_events` is the idempotency ledger (evt id as PK, zero policies, no app grants).
+  `platform_admins` added per brief §7.2, ops-only until the Phase 6 admin surface.
+- [Phase 4] Plan limits in the DB: `clients_plan_limit` BEFORE INSERT OR UPDATE trigger caps
+  free orgs at 3 active clients — archiving is never blocked, restore counts toward the cap,
+  pro orgs exempt, applies to every role (superuser included). Downgrades never clean up
+  retroactively; new writes are capped.
+- [Phase 4] Webhook pipeline (`/api/webhooks/stripe`): raw body + signature verification
+  (400 before any DB write), pure event processor behind a four-method writer interface,
+  `event.id` recorded LAST so duplicate deliveries collapse on the ledger PK, unknown types
+  recorded + acked, 500 on processing failure so Stripe retries (dedup makes retries safe).
+  Events consumed: checkout.session.completed (org mapping via session metadata),
+  customer.subscription.updated (status/plan mirror), customer.subscription.deleted (→ free).
+- [Phase 4] Checkout + Customer Portal server actions (owner/admin only; honest errors when
+  unconfigured), `/app/[orgSlug]/settings/billing` page (plan card with status + renewal,
+  usage vs limit, upgrade/manage), dashboard Billing quick link,
+  `scripts/create-stripe-price.mjs` (creates the Pro price once via lookup key `pro_monthly`
+  — no price id ever configured by hand).
+- [Phase 4] Tests: pgTAP `100-subscriptions` (24 assertions — bootstrap row, member/outsider/
+  anon read matrix, app write denial, limit insert + restore paths, pro exemption with limits
+  returning on downgrade, paid-plan CHECK, ledger PK rejection, invisible tables, cascade);
+  vitest +17 (signature verification incl. tampered body, attach→record call order,
+  duplicate, out-of-order, malformed checkout, planForStatus table). Local gate: lint 0,
+  tsc 0, vitest 60/60, check:env OK, build OK.
+- [Phase 4] `clients` actions forward P0001 trigger messages verbatim (the plan-limit message
+  now reaches the user instead of "Could not save the client").
 
 ## Key lessons from Phase 1 CI debugging
 
@@ -176,12 +206,33 @@ throws_ok|like)\(`), not by eye — plans drifted twice during file growth.
   the test asserts both layers separately (member → 42501 grant denial, superuser → P0001
   trigger message).
 
+## Key lessons from Phase 4
+
+- **Trigger enforcement applies to fixture authors too: `clients_plan_limit` fires for every
+  role, superuser included.** Any future test file or seed script needing more than 3 active
+  clients in one org must first set `plan = 'pro'` (with a `stripe_subscription_id`, per the
+  CHECK) as superuser — noted in the migration comment next to the trigger.
+- **Stripe's basil API version moved `current_period_end` between `Subscription` and
+  `SubscriptionItem`** — the code reads both shapes (outer field, then first item) instead of
+  betting on which one the installed SDK exposes.
+- **Out-of-order webhook deliveries are handled by targeting the update, not by a lookup:**
+  `customer.subscription.updated` updates `where stripe_subscription_id = …`; zero rows
+  matched means the mapping event has not landed yet → ack, record, skip. No read-modify
+  race, no ordering assumption.
+- **Keep the webhook processor pure behind a writer interface** — every interesting case
+  (duplicate, out-of-order, bad signature, malformed metadata) is a vitest with a fake writer
+  and a hand-HMAC-signed payload; no Stripe account or network needed in CI.
+- **`redirect()` inside a server action throws NEXT_REDIRECT** — it must live outside the
+  try/catch around the Stripe API calls, or the catch silently swallows the redirect.
+
 ## Next
 
-- Phase 4: Stripe billing — ADR-0005 (webhook-only source of truth), billing schema,
-  checkout + webhook handler with idempotency. Stripe test account needed before anything
-  live can be exercised (user blocker); schema, handler, and signature-verification tests
-  do not depend on it.
+- PR #9 review → CI green → `--no-ff` merge to `main` + tag `v0.4`.
+- Live Stripe verification once the user creates the Stripe test account:
+  `scripts/create-stripe-price.mjs`, then `stripe listen --forward-to localhost:3000/api/
+webhooks/stripe`, then one real checkout. Code + tests already complete without it.
+- Doc gap to close before "MVP done" (§11): `docs/DATA_MODEL.md` (PLAN §5 deliverable) —
+  migrations remain the source of truth until it is consolidated with an ERD.
 - Before Phase 5: Resend account.
 - Docker Desktop still not installed locally → DB/e2e verified in CI only.
 
@@ -227,3 +278,10 @@ throws_ok|like)\(`), not by eye — plans drifted twice during file growth.
 | 2026-10-13 | Draft editor saves header + lines as one form (update/insert/delete by id)     | One intent per action; delete-last ordering means a mid-save failure never    |
 |            |                                                                                | loses rows.                                                                   |
 | 2026-10-13 | No client-side confirm dialog on void in the MVP                               | Distinct styled button; the DB transition rule is the authority.              |
+| 2026-10-14 | Stripe webhook is the only writer of `subscriptions`; app role is select-only  | ADR-0005; no code path moves a plan without Stripe saying so.                 |
+| 2026-10-14 | Plan meter = active clients per org (free 3, pro unlimited)                    | Deterministic (no month-rollover logic), core object; future meters reuse it. |
+| 2026-10-14 | `past_due` keeps Pro access                                                    | Dunning retries run for days; locking an org out mid-run helps nobody.        |
+| 2026-10-14 | Ledger: process first, record `event.id` last, PK conflict = duplicate         | Handlers are idempotent declarative syncs — even concurrent dupes are safe.   |
+| 2026-10-14 | Stripe keys optional in env: missing = documented "billing disabled" mode      | Same honest-disabled pattern as Phase 2 invites; CI needs no Stripe account.  |
+| 2026-10-14 | `platform_admins` exists with zero app surface until Phase 6                   | Brief §7.2 lists the table; the admin milestone builds its surface.           |
+| 2026-10-14 | Free-plan limit enforced by DB trigger, no app-side pre-check                  | Defense in depth like every rule; one P0001 message reaches the user.         |
