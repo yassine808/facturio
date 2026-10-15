@@ -4,9 +4,13 @@ Status log for the multi-tenant invoice SaaS. Updated at the end of every sessio
 
 ## Status
 
-**Current phase:** Phase 4 — Stripe billing (implementation complete on branch
-`feature/phase-4-billing`, PR #9; awaiting CI + user review). Live Stripe verification waits
-on the user's test account — schema, handler, and tests need no account.
+**Current phase:** Phase 5 — delivery (PDF invoices, email via Resend, share links; the
+Resend account is the user blocker for anything live)
+
+Phase 4 shipped: merged `--no-ff` as `ad56a32`, tagged `v0.4`, pushed. PR #9 closed as
+merged. CI green on the merge (all 9 checks, all 11 pgTAP files — run 38491419691 on the
+branch). Live Stripe verification still waits on the user's Stripe test account; schema,
+webhook handler, and tests need no account.
 
 Phase 3 shipped: merged `--no-ff` as `3f4e304`, tagged `v0.3`, pushed. PR #8 closed as
 merged. CI green on the merge (all 9 checks, all 10 pgTAP files).
@@ -227,13 +231,15 @@ throws_ok|like)\(`), not by eye — plans drifted twice during file growth.
 
 ## Next
 
-- PR #9 review → CI green → `--no-ff` merge to `main` + tag `v0.4`.
+- Phase 5: PDF invoices (`@react-pdf/renderer`), email via Resend (Mailpit locally,
+  documented disabled mode until the account exists), share links (tokenized read-only
+  public invoice view with hardened policies). ADR first if a boundary decision appears.
 - Live Stripe verification once the user creates the Stripe test account:
   `scripts/create-stripe-price.mjs`, then `stripe listen --forward-to localhost:3000/api/
 webhooks/stripe`, then one real checkout. Code + tests already complete without it.
 - Doc gap to close before "MVP done" (§11): `docs/DATA_MODEL.md` (PLAN §5 deliverable) —
   migrations remain the source of truth until it is consolidated with an ERD.
-- Before Phase 5: Resend account.
+- Resend account before Phase 5 email goes live.
 - Docker Desktop still not installed locally → DB/e2e verified in CI only.
 
 ## Blockers
