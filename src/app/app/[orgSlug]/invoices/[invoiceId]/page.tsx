@@ -13,6 +13,8 @@ import {
   listInvoiceItems,
   listPayments,
 } from "@/features/invoices/queries";
+import { isLiveLink, listShareLinks } from "@/features/share/queries";
+import { ShareLinkForm } from "@/features/share/share-form";
 import { isOverdue } from "@/features/invoices/types";
 import { updateInvoice } from "@/features/invoices/actions";
 import { getOrgBySlug, getUserRole } from "@/features/orgs/queries";
@@ -57,6 +59,14 @@ export default async function InvoiceDetailPage({
   const overdue = isOverdue(invoice.status, invoice.due_date, todayIso());
   const paidTotal = payments.reduce((sum, p) => sum + p.amount_minor, 0);
 
+  // Share links only matter on issued invoices (the DB refuses them on
+  // drafts anyway); live = not revoked and not expired.
+  const shareLinks =
+    sent || invoice.status === "paid"
+      ? await listShareLinks(supabase, org.id, invoice.id)
+      : [];
+  const nowIso = new Date().toISOString();
+
   // Draft editing needs the client dropdown; an archived (or deleted) client
   // the draft still points at must stay selectable, so prepend it if missing.
   const clientOptions = draft ? await listClientOptions(supabase, org.id) : [];
@@ -91,7 +101,9 @@ export default async function InvoiceDetailPage({
             {invoice.clients?.name ?? "Unknown client"} · issued {invoice.issue_date}
             {invoice.due_date && ` · due ${invoice.due_date}`}
             {overdue && (
-              <span className="ml-1 font-medium text-red-600 dark:text-red-400">· OVERDUE</span>
+              <span className="ml-1 font-medium text-red-600 dark:text-red-400">
+                · OVERDUE
+              </span>
             )}
           </p>
         </div>
@@ -145,7 +157,9 @@ export default async function InvoiceDetailPage({
                 {items.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-2">{item.description}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{item.quantity}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {item.quantity}
+                    </td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {formatMinor(item.unit_price_minor, currency)}
                     </td>
@@ -225,12 +239,16 @@ export default async function InvoiceDetailPage({
                           {payment.notes && ` · ${payment.notes}`}
                         </span>
                       </div>
-                      {sent && <DeletePaymentForm orgSlug={org.slug} paymentId={payment.id} />}
+                      {sent && (
+                        <DeletePaymentForm orgSlug={org.slug} paymentId={payment.id} />
+                      )}
                     </li>
                   ))}
                   <li className="flex items-center justify-between px-4 py-2.5 text-sm font-medium">
                     <span>Paid so far</span>
-                    <span className="tabular-nums">{formatMinor(paidTotal, currency)}</span>
+                    <span className="tabular-nums">
+                      {formatMinor(paidTotal, currency)}
+                    </span>
                   </li>
                 </ul>
               )}
@@ -248,6 +266,27 @@ export default async function InvoiceDetailPage({
                   </p>
                 )
               )}
+            </section>
+          )}
+
+          {(sent || invoice.status === "paid") && (
+            <section className="space-y-4">
+              <h2 className="text-lg font-semibold">Delivery</h2>
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Share links let your client open this invoice without an account — the
+                raw token is shown once and the link can be revoked at any time.
+              </p>
+              <ShareLinkForm
+                orgId={org.id}
+                orgSlug={org.slug}
+                invoiceId={invoice.id}
+                links={shareLinks
+                  .filter((link) => isLiveLink(link, nowIso))
+                  .map((link) => ({
+                    id: link.id,
+                    expiresAtLabel: link.expires_at.slice(0, 10),
+                  }))}
+              />
             </section>
           )}
         </>
