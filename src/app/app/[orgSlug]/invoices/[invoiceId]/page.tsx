@@ -272,6 +272,15 @@ export default async function InvoiceDetailPage({
           {(sent || invoice.status === "paid") && (
             <section className="space-y-4">
               <h2 className="text-lg font-semibold">Delivery</h2>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`/app/${org.slug}/invoices/${invoice.id}/pdf`}
+                  download
+                  className="rounded-md border border-zinc-300 bg-transparent px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Download PDF
+                </a>
+              </div>
               <p className="text-sm text-zinc-500 dark:text-zinc-400">
                 Share links let your client open this invoice without an account — the
                 raw token is shown once and the link can be revoked at any time.
