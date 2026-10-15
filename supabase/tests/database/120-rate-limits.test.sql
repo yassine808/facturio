@@ -63,12 +63,14 @@ select is(
 select throws_ok(
   $$ select public.rate_limit_hit('test:rl:bad-params', 0, 60) $$,
   '22023',
+  'rate limit parameters must be positive',
   'a non-positive limit is rejected loudly'
 );
 
 select throws_ok(
   $$ select public.rate_limit_hit(repeat('x', 513), 3, 60) $$,
   '22023',
+  'rate limit key must be 1-512 characters',
   'an oversized key is rejected loudly (keys carry header material)'
 );
 

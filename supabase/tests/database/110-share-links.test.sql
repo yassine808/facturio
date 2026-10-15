@@ -190,6 +190,7 @@ select throws_ok(
              now() + interval '30 days'
       from public.invoices i where i.status = 'draft' $q$,
   '23514',
+  'share links exist for sent invoices only — issue the invoice first',
   'a draft invoice cannot get a share link (trigger, every role)'
 );
 
@@ -201,6 +202,7 @@ select throws_ok(
              now() + interval '30 days', now()
       from public.invoices i where i.status = 'sent' $q$,
   '42501',
+  null,
   'the with-check policy refuses links born revoked'
 );
 
@@ -216,6 +218,7 @@ select throws_ok(
              now() + interval '30 days'
       from public.invoices i where i.status = 'sent' $q$,
   '42501',
+  null,
   'an outsider cannot mint a link into another org'
 );
 
@@ -235,6 +238,7 @@ select throws_ok(
              now() + interval '30 days'
       from public.invoices i where i.status = 'sent' $q$,
   '23514',
+  null,
   'token_hash must look like a sha256 hex digest'
 );
 
@@ -242,12 +246,14 @@ select throws_ok(
   $q$ update public.share_links
          set token_hash = encode(extensions.digest('rehash', 'sha256'), 'hex') $q$,
   '42501',
+  null,
   'only revoked_at is updatable from the app (column-level grant)'
 );
 
 select throws_ok(
   $$ delete from public.share_links $$,
   '42501',
+  null,
   'links are revoked, never deleted'
 );
 
