@@ -4,8 +4,11 @@ Status log for the multi-tenant invoice SaaS. Updated at the end of every sessio
 
 ## Status
 
-**Current phase:** Phase 5 — delivery (PDF invoices, email via Resend, share links; the
-Resend account is the user blocker for anything live)
+**Current phase:** Phase 5 — delivery (PDF invoices, email via Resend/Mailpit, share links)
+built on `feature/phase-5-delivery`; PR #10 opened for CI and marked **ready for review**
+awaiting the phase-end approval → local `--no-ff` merge + tag `v0.5`. CI all 9 checks green
+on the branch (run 38677354023, head `ab5eb6c`). Live email verification waits on the
+user's Resend account; everything else is code- and test-complete.
 
 Phase 4 shipped: merged `--no-ff` as `ad56a32`, tagged `v0.4`, pushed. PR #9 closed as
 merged. CI green on the merge (all 9 checks, all 11 pgTAP files — run 38491419691 on the
@@ -116,6 +119,39 @@ merged. CI green on the merge (all 9 checks, all 10 pgTAP files).
   tsc 0, vitest 60/60, check:env OK, build OK.
 - [Phase 4] `clients` actions forward P0001 trigger messages verbatim (the plan-limit message
   now reaches the user instead of "Could not save the client").
+- [Phase 5] ADRs 0007 (rate limiting = `rate_limits` table + atomic `rate_limit_hit` definer
+  fn, fail closed), 0008 (email transport by config: Resend → SMTP/Mailpit → honest disabled
+  mode), 0009 (PDF = `@react-pdf/renderer` renderToBuffer in a session-gated GET route), 0012
+  (share = single SECURITY DEFINER `shared_invoice(token)` projection granted to anon only) —
+  committed as `de0a694` before any code.
+- [Phase 5] DB (2 migrations, CI-applied from scratch): `share_links` (sha256-hex token_hash
+  unique CHECK, composite FK `(invoice_id, org_id)`, `enforce_shareable_invoice` trigger
+  refusing links on non-sent/paid invoices, RLS select/insert/update, `update (revoked_at)`
+  column grant, no delete grant); `rate_limits` (zero-grant counter table incl. service_role).
+  pgTAP `110-share-links` (24) + `120-rate-limits` (13) — anon projection matrix, issued-only
+  trigger every role, born-revoked with-check 42501, outsider denial, column grants, expiry,
+  window refill/reset.
+- [Phase 5] Share app: 43-char base64url token via Web Crypto (sha256 hex at rest, same
+  implementation serves node actions and the edge proxy), mint/revoke actions (P0001/23514
+  messages verbatim), one-time raw-URL display form (invite-form pattern), invoice page
+  Delivery section, public `/share/[token]` page rendering only the fixed jsonb projection
+  with a cookieless anon client (the RPC is anon-only by design — a member's own session
+  would otherwise be denied on their own link), noindex metadata, unknown/expired/revoked all 404. `proxy.ts` fail-closed 429 before token resolution, keyed by sha256(token)+ip.
+- [Phase 5] PDF: `invoice-pdf.tsx` (A4, org header, billed-to, line table, DB-computed totals,
+  notes) + GET route under the invoice reusing the session as the whole credential (three
+  gates: getUser, role, RLS-scoped row), filename `Facturio-INV-2026-0001.pdf`, `%PDF-` magic
+  byte tests incl. a 40-line page-break case (2/2).
+- [Phase 5] Email: pure `resolveEmailConfig` (Resend > SMTP > disabled; missing EMAIL_FROM
+  counts as disabled), HTML-escaped render (mail-client XSS), both transports one call shape
+  with the same PDF attachment, `sendInvoiceByEmail` action (sent-only per ADR, org resolved
+  by slug under RLS — orgId never trusted from the form, fresh 30-day link minted per send
+  because a stored link's token is unrecoverable from its hash), editable validated recipient
+  prefilled from the client's email (`getInvoice` now selects it), honest disabled-mode note
+  on the invoice page. `.env.example` documents `RESEND_API_KEY`, `EMAIL_SMTP_URL`,
+  `EMAIL_FROM` (check:env green, 9 vars).
+- [Phase 5] Local gate before the final push: lint 0, tsc 0, vitest 78/78 (11 files),
+  check:env OK, `next build` OK (share + pdf routes present); CI 9/9 green on `ab5eb6c`
+  (run 38677354023). Two real CI-found bugs fixed on the way (see Phase 5 lessons).
 
 ## Key lessons from Phase 1 CI debugging
 
@@ -229,65 +265,118 @@ throws_ok|like)\(`), not by eye — plans drifted twice during file growth.
 - **`redirect()` inside a server action throws NEXT_REDIRECT** — it must live outside the
   try/catch around the Stripe API calls, or the catch silently swallows the redirect.
 
+## Key lessons from Phase 5
+
+- **pgTAP's 3-arg `throws_ok(query, errcode, description)` treats arg 3 as the expected
+  error MESSAGE.** Eight assertion descriptions were silently compared against real error
+  text (CI run 38672284285). The 4-arg form `(query, errcode, errmsg_or_null, description)`
+  is the only correct one here: pin exact text for own `raise exception` messages, `null`
+  for Postgres-generated codes.
+- **"caught: no exception" from `throws_ok` means the statement was a no-op — usually an
+  RLS-emptied subquery.** The Phase 3 lesson ("outsider subqueries bind null") recurred in a
+  nastier form: an outsider's `insert … select from invoices where status='sent'` inside
+  `throws_ok` inserted _zero rows_, so the with-check never ran and the test proved nothing
+  either way (CI 38674546314, test 18). Persona blocks must reference ids through
+  transaction-local GUCs, never through any subquery RLS can empty — including inside
+  `throws_ok`.
+- **A test that expects `42501` from an RLS with-check must hand the persona a row the FK
+  will accept** (real org + real invoice id via GUC); only then is the with-check the sole
+  remaining defense and the assertion meaningful.
+- **The raw share token is unrecoverable from its hash by design — every email send mints a
+  fresh 30-day link** rather than reusing a stored one; the invoice page lists them all and
+  revocation stays per-link.
+- **A `"use server"` module turns every export into an HTTP endpoint** — shared helpers
+  (minting, `dbError`) live in a plain module (`share/link.ts`) instead.
+- **`authenticated` cannot execute `shared_invoice()` (anon-only grant), so the public share
+  page deliberately builds a cookieless Supabase client** — reusing the session cookie would
+  404 a logged-in member clicking their own share URL.
+- **`Buffer` is not assignable to `Response`'s `BodyInit`** under the current DOM/undici
+  types — wrap it (`new Uint8Array(pdf)`); and the `currency` row schema types as `string`,
+  so the same `as Currency` cast the page uses applies in the PDF module too.
+
 ## Next
 
-- Phase 5: PDF invoices (`@react-pdf/renderer`), email via Resend (Mailpit locally,
-  documented disabled mode until the account exists), share links (tokenized read-only
-  public invoice view with hardened policies). ADR first if a boundary decision appears.
+- Phase 5 review → on approval: local `--no-ff` merge of PR #10, tag `v0.5`, close PR.
+- Phase 6 (per PLAN milestone 6): admin surface for `platform_admins`, ops/observability
+  pass — first item is the deferred `rate_limits` row pruning (ADR-0007 marks it Phase 6/7).
+- Written but never filed: ADR-0010 (lefthook) and ADR-0011 (server-only secrets) — both
+  decisions are implemented and documented in code; the ADR files are still owed.
+- e2e share-flow spec (signup → invoice → send → mint → public page in a clean context →
+  PDF download magic bytes) — deferred from Phase 5: it cannot be executed locally (no
+  Docker) and writing Playwright blind would ship an unverifiable test; CI's e2e job covers
+  the unauthenticated surface only.
 - Live Stripe verification once the user creates the Stripe test account:
   `scripts/create-stripe-price.mjs`, then `stripe listen --forward-to localhost:3000/api/
 webhooks/stripe`, then one real checkout. Code + tests already complete without it.
 - Doc gap to close before "MVP done" (§11): `docs/DATA_MODEL.md` (PLAN §5 deliverable) —
   migrations remain the source of truth until it is consolidated with an ERD.
-- Resend account before Phase 5 email goes live.
+- Resend account before Phase 5 email goes live; Mailpit binary for the local dev inbox.
 - Docker Desktop still not installed locally → DB/e2e verified in CI only.
 
 ## Blockers
 
-- Stripe test account (blocks live Phase 4 verification), Resend account (blocks Phase 5) —
-  user action.
+- Stripe test account (blocks live Phase 4 verification), Resend account (blocks live
+  Phase 5 email verification) — user action.
+- Mailpit binary (blocks the local dev-inbox demo; the SMTP transport is code-complete and
+  points at `smtp://127.0.0.1:1025`) — user action.
 - Docker Desktop (blocks local `db:*` / e2e runs) — user action; CI covers both meanwhile.
 - Dependabot branches on origin (setup-node-7, upload-artifact-7, gitleaks-action-3,
   pnpm/action-setup-6, supabase/setup-cli-3, dev-deps-*) — noted, awaiting user decision.
 
 ## Decisions
 
-| Date       | Decision                                                                       | Rationale                                                                     |
-| ---------- | ------------------------------------------------------------------------------ | ----------------------------------------------------------------------------- |
-| 2026-10-13 | Main folder is `D:\Projects\project1`                                          | User instruction.                                                             |
-| 2026-10-13 | Remote `origin` = github.com/yassine808/project1                               | User instruction.                                                             |
-| 2026-10-13 | Product name: **Facturio**                                                     | User choice; npm name free; .com/.app taken → ship on vercel.app for now.     |
-| 2026-10-13 | Core domain: invoice & client manager (default confirmed)                      | User confirmation.                                                            |
-| 2026-10-13 | License MIT; local `--no-ff` merges, tag per phase                             | User: "you create everything"; sensible default per brief.                    |
-| 2026-10-13 | Accounts: Supabase + Vercel ready; Stripe/Resend pending                       | User answers; creation tracked as blockers per phase.                         |
-| 2026-10-13 | No fixed launch deadline                                                       | User choice; estimates in PLAN §8.                                            |
-| 2026-10-13 | User installs Docker Desktop themselves                                        | Rule: agent does not install global software.                                 |
-| 2026-10-13 | UI built using `impeccable` + `ui-ux-pro-max` skills; dark default + toggle    | User instruction; toggle assumption logged (changeable).                      |
-| 2026-10-13 | Email = Resend + Mailpit local; PDF = @react-pdf/renderer; hooks = lefthook    | Phase 0 research; ADRs 0008–0010 to confirm.                                  |
-| 2026-10-13 | Test helpers written in-repo (~50 lines), no 3rd-party pgTAP helper dep        | Brief rule: no unexplained dependencies.                                      |
-| 2026-10-13 | pgTAP personas use run-unique emails + GUCs, never delete from `auth.users`    | CI-local delete-by-email anomaly (see lessons); deterministic and safe.       |
-| 2026-10-13 | Theme vars driven by `.dark` class, not `prefers-color-scheme`                 | Matches layout comment; unlayered body rule paints the page (see lessons).    |
-| 2026-10-13 | Tag `v0.1` on the first fully green Phase 1 commit                             | Per plan: one tag per phase.                                                  |
-| 2026-10-13 | Invitations are links; no email sending in Phase 2                             | Resend account arrives in Phase 5; raw token shown once, sha256 at rest.      |
-| 2026-10-13 | Invite landing page shows nothing pre-acceptance                               | Avoids leaking tenant metadata to link scanners; mismatch error on accept.    |
-| 2026-10-13 | No committed Supabase types; query helpers Zod-parse results                   | House rule; SQL drift fails loudly at runtime instead of lying via types.     |
-| 2026-10-13 | Anon keeps read grants on tenant tables, policies are `to authenticated`       | Grants precede RLS; zero rows beats a 42501 masking the real semantics.       |
-| 2026-10-13 | Invited role limited to member/admin; owners promoted in-app only              | Keeps the last-owner backstop the single authority on owner counts.           |
-| 2026-10-13 | Money = integer minor units + basis-point tax rates, one rounding rule         | ADR-0003; totals trigger-computed, no money column has an update grant.       |
-| 2026-10-13 | Invoice numbers allocate at draft→sent from a locked per-(org, year) counter   | ADR-0006; rollback returns the number, unnumbered drafts cannot burn one.     |
-| 2026-10-13 | Overdue is derived (`sent` + past due_date), never stored                      | No cron, cannot go stale.                                                     |
-| 2026-10-13 | Invoice details freeze once sent; status is the only later change              | A sent invoice is a record of what was billed (migration 0009).               |
-| 2026-10-13 | Payments: sent-only insert/delete, auto paid-flip, frozen once paid, no UPDATE | Corrections are delete + re-record; settled money is not edited in place.     |
-| 2026-10-13 | No payment `method` column in the MVP                                          | YAGNI; amount + date + notes cover the brief, adding a column later is cheap. |
-| 2026-10-13 | Dashboard sums grouped per currency, summed in JS from RLS-scoped rows         | Mixed-currency sums would be fake numbers; no aggregate RPC keeps the         |
-|            |                                                                                | revoke-the-surface defense intact.                                            |
-| 2026-10-13 | Draft editor saves header + lines as one form (update/insert/delete by id)     | One intent per action; delete-last ordering means a mid-save failure never    |
-|            |                                                                                | loses rows.                                                                   |
-| 2026-10-13 | No client-side confirm dialog on void in the MVP                               | Distinct styled button; the DB transition rule is the authority.              |
-| 2026-10-14 | Stripe webhook is the only writer of `subscriptions`; app role is select-only  | ADR-0005; no code path moves a plan without Stripe saying so.                 |
-| 2026-10-14 | Plan meter = active clients per org (free 3, pro unlimited)                    | Deterministic (no month-rollover logic), core object; future meters reuse it. |
-| 2026-10-14 | `past_due` keeps Pro access                                                    | Dunning retries run for days; locking an org out mid-run helps nobody.        |
-| 2026-10-14 | Ledger: process first, record `event.id` last, PK conflict = duplicate         | Handlers are idempotent declarative syncs — even concurrent dupes are safe.   |
-| 2026-10-14 | Stripe keys optional in env: missing = documented "billing disabled" mode      | Same honest-disabled pattern as Phase 2 invites; CI needs no Stripe account.  |
-| 2026-10-14 | `platform_admins` exists with zero app surface until Phase 6                   | Brief §7.2 lists the table; the admin milestone builds its surface.           |
-| 2026-10-14 | Free-plan limit enforced by DB trigger, no app-side pre-check                  | Defense in depth like every rule; one P0001 message reaches the user.         |
+| Date       | Decision                                                                       | Rationale                                                                      |
+| ---------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ |
+| 2026-10-13 | Main folder is `D:\Projects\project1`                                          | User instruction.                                                              |
+| 2026-10-13 | Remote `origin` = github.com/yassine808/project1                               | User instruction.                                                              |
+| 2026-10-13 | Product name: **Facturio**                                                     | User choice; npm name free; .com/.app taken → ship on vercel.app for now.      |
+| 2026-10-13 | Core domain: invoice & client manager (default confirmed)                      | User confirmation.                                                             |
+| 2026-10-13 | License MIT; local `--no-ff` merges, tag per phase                             | User: "you create everything"; sensible default per brief.                     |
+| 2026-10-13 | Accounts: Supabase + Vercel ready; Stripe/Resend pending                       | User answers; creation tracked as blockers per phase.                          |
+| 2026-10-13 | No fixed launch deadline                                                       | User choice; estimates in PLAN §8.                                             |
+| 2026-10-13 | User installs Docker Desktop themselves                                        | Rule: agent does not install global software.                                  |
+| 2026-10-13 | UI built using `impeccable` + `ui-ux-pro-max` skills; dark default + toggle    | User instruction; toggle assumption logged (changeable).                       |
+| 2026-10-13 | Email = Resend + Mailpit local; PDF = @react-pdf/renderer; hooks = lefthook    | Phase 0 research; ADRs 0008–0010 to confirm.                                   |
+| 2026-10-13 | Test helpers written in-repo (~50 lines), no 3rd-party pgTAP helper dep        | Brief rule: no unexplained dependencies.                                       |
+| 2026-10-13 | pgTAP personas use run-unique emails + GUCs, never delete from `auth.users`    | CI-local delete-by-email anomaly (see lessons); deterministic and safe.        |
+| 2026-10-13 | Theme vars driven by `.dark` class, not `prefers-color-scheme`                 | Matches layout comment; unlayered body rule paints the page (see lessons).     |
+| 2026-10-13 | Tag `v0.1` on the first fully green Phase 1 commit                             | Per plan: one tag per phase.                                                   |
+| 2026-10-13 | Invitations are links; no email sending in Phase 2                             | Resend account arrives in Phase 5; raw token shown once, sha256 at rest.       |
+| 2026-10-13 | Invite landing page shows nothing pre-acceptance                               | Avoids leaking tenant metadata to link scanners; mismatch error on accept.     |
+| 2026-10-13 | No committed Supabase types; query helpers Zod-parse results                   | House rule; SQL drift fails loudly at runtime instead of lying via types.      |
+| 2026-10-13 | Anon keeps read grants on tenant tables, policies are `to authenticated`       | Grants precede RLS; zero rows beats a 42501 masking the real semantics.        |
+| 2026-10-13 | Invited role limited to member/admin; owners promoted in-app only              | Keeps the last-owner backstop the single authority on owner counts.            |
+| 2026-10-13 | Money = integer minor units + basis-point tax rates, one rounding rule         | ADR-0003; totals trigger-computed, no money column has an update grant.        |
+| 2026-10-13 | Invoice numbers allocate at draft→sent from a locked per-(org, year) counter   | ADR-0006; rollback returns the number, unnumbered drafts cannot burn one.      |
+| 2026-10-13 | Overdue is derived (`sent` + past due_date), never stored                      | No cron, cannot go stale.                                                      |
+| 2026-10-13 | Invoice details freeze once sent; status is the only later change              | A sent invoice is a record of what was billed (migration 0009).                |
+| 2026-10-13 | Payments: sent-only insert/delete, auto paid-flip, frozen once paid, no UPDATE | Corrections are delete + re-record; settled money is not edited in place.      |
+| 2026-10-13 | No payment `method` column in the MVP                                          | YAGNI; amount + date + notes cover the brief, adding a column later is cheap.  |
+| 2026-10-13 | Dashboard sums grouped per currency, summed in JS from RLS-scoped rows         | Mixed-currency sums would be fake numbers; no aggregate RPC keeps the          |
+|            |                                                                                | revoke-the-surface defense intact.                                             |
+| 2026-10-13 | Draft editor saves header + lines as one form (update/insert/delete by id)     | One intent per action; delete-last ordering means a mid-save failure never     |
+|            |                                                                                | loses rows.                                                                    |
+| 2026-10-13 | No client-side confirm dialog on void in the MVP                               | Distinct styled button; the DB transition rule is the authority.               |
+| 2026-10-14 | Stripe webhook is the only writer of `subscriptions`; app role is select-only  | ADR-0005; no code path moves a plan without Stripe saying so.                  |
+| 2026-10-14 | Plan meter = active clients per org (free 3, pro unlimited)                    | Deterministic (no month-rollover logic), core object; future meters reuse it.  |
+| 2026-10-14 | `past_due` keeps Pro access                                                    | Dunning retries run for days; locking an org out mid-run helps nobody.         |
+| 2026-10-14 | Ledger: process first, record `event.id` last, PK conflict = duplicate         | Handlers are idempotent declarative syncs — even concurrent dupes are safe.    |
+| 2026-10-14 | Stripe keys optional in env: missing = documented "billing disabled" mode      | Same honest-disabled pattern as Phase 2 invites; CI needs no Stripe account.   |
+| 2026-10-14 | `platform_admins` exists with zero app surface until Phase 6                   | Brief §7.2 lists the table; the admin milestone builds its surface.            |
+| 2026-10-14 | Free-plan limit enforced by DB trigger, no app-side pre-check                  | Defense in depth like every rule; one P0001 message reaches the user.          |
+| 2026-10-15 | Rate limiting = `rate_limits` table + `rate_limit_hit` definer fn, fail closed | ADR-0007; in-DB atomic upsert beats in-memory counters on serverless; the      |
+|            |                                                                                | route answers 429 instead of failing open when the counter errors.             |
+| 2026-10-15 | Email transport by config: Resend → SMTP/Mailpit → honest disabled mode        | ADR-0008; CI needs no account, dev uses Mailpit, disabled mode never pretends. |
+| 2026-10-15 | `EMAIL_FROM` required by every transport — missing counts as disabled          | Providers reject a missing sender; failing the first send teaches the wrong    |
+|            |                                                                                | thing.                                                                         |
+| 2026-10-15 | PDF = `@react-pdf/renderer` renderToBuffer in a session-gated GET route        | ADR-0009; the session cookie is the whole credential — a separate PDF token    |
+|            |                                                                                | would only be one more secret to leak.                                         |
+| 2026-10-15 | Share = one SECURITY DEFINER `shared_invoice(token)` anon-only RPC             | ADR-0012; a fixed jsonb projection is the single auditable public door;        |
+|            |                                                                                | revoked for authenticated so members read links via RLS, not the door.         |
+| 2026-10-15 | Share tokens: 32 random bytes shown once, sha256 hex at rest, 30-day expiry    | Unrecoverable by design — every email send mints a fresh link; revocation is   |
+|            |                                                                                | per-link and effective on the next read.                                       |
+| 2026-10-15 | Share rate limit keyed by sha256(token)+ip, resolved in `proxy.ts`             | The only place that can answer 429; hashing keeps raw tokens out of the        |
+|            |                                                                                | counter table.                                                                 |
+| 2026-10-15 | Public share page calls the RPC through a cookieless anon client               | `shared_invoice` is anon-only by design; reusing the visitor's session would   |
+|            |                                                                                | deny members their own link.                                                   |
+| 2026-10-15 | Email recipient is an editable, validated form field prefilled from the client | Stored email is a convenience, not an authority; typos get corrected at send.  |

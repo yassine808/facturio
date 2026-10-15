@@ -3,8 +3,11 @@ import { renderInvoicePdf, type InvoicePdfProps } from "./invoice-pdf";
 
 /**
  * Smoke test (ADR-0009): the renderer must produce an actual PDF, not
- * just not-throw. The magic bytes are the cheapest proof of that.
- * Content-level rendering is asserted by Playwright's download check.
+ * just not-throw. The magic bytes are the cheapest proof of that; the
+ * second case exercises the page-break path with many lines. There is
+ * no e2e download check yet — Playwright needs the dockerized stack
+ * (Docker not installed locally; CI's e2e job covers the unauthenticated
+ * surface only). Tracked as a Phase 6 backlog item.
  */
 
 const fixture: InvoicePdfProps = {
