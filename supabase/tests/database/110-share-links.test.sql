@@ -78,6 +78,18 @@ from public.invoices where status = 'draft';
 update public.invoices set tax_rate_bps = 2000 where status = 'draft';
 update public.invoices set status = 'sent' where status = 'draft';
 
+-- Superuser: stash the sent invoice id — the outsider block below must
+-- not use an RLS-filtered subquery (070 lesson): dave sees NO invoices,
+-- so a select-based insert there silently inserts zero rows and proves
+-- nothing (that exact bug shipped once — see CI 38674546314).
+select tests.clear_authentication();
+
+select set_config(
+  'test.sent_invoice_id',
+  (select id::text from public.invoices where status = 'sent'),
+  true
+);
+
 insert into public.share_links (org_id, invoice_id, token_hash, created_by, expires_at)
 select
   current_setting('test.org_a_id')::uuid,
@@ -210,13 +222,16 @@ select throws_ok(
 select tests.clear_authentication();
 select tests.authenticate_as(current_setting('test.dave_email'));
 
+-- Concrete ids, no subquery: dave's row targets org A's REAL sent
+-- invoice, so the composite FK would happily accept it and the ONLY
+-- thing that can stop the insert is the with-check (org membership).
 select throws_ok(
   $q$ insert into public.share_links (org_id, invoice_id, token_hash, created_by, expires_at)
-      select current_setting('test.org_a_id')::uuid, i.id,
-             encode(extensions.digest('share-token-dave', 'sha256'), 'hex'),
-             tests.user_id(current_setting('test.dave_email')),
-             now() + interval '30 days'
-      from public.invoices i where i.status = 'sent' $q$,
+      values (current_setting('test.org_a_id')::uuid,
+              current_setting('test.sent_invoice_id')::uuid,
+              encode(extensions.digest('share-token-dave', 'sha256'), 'hex'),
+              tests.user_id(current_setting('test.dave_email')),
+              now() + interval '30 days') $q$,
   '42501',
   null,
   'an outsider cannot mint a link into another org'
