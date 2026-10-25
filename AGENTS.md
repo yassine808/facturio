@@ -55,7 +55,7 @@ pnpm test:e2e                                                 # Playwright; buil
 ## Git
 
 - Identity (local config, never commit as anyone else): `yassine808` / `166349232+yassine808@users.noreply.github.com`
-- Remote: `origin` = https://github.com/yassine808/project1.git
+- Remote: `origin` = https://github.com/yassine808/facturio.git
 - Add files **individually** (no `git add .`). Small Conventional Commits (commitlint runs via lefthook).
 - `main` always deployable; branches `feat/…`, `fix/…`, `chore/…`, `docs/…`; merge `--no-ff`; tag `v0.x` per phase.
 - Line endings pinned LF via `.gitattributes` (Windows dev + Linux CI).
@@ -71,3 +71,13 @@ pnpm test:e2e                                                 # Playwright; buil
   authorization re-checked in every server action. Major dependency ⇒ short ADR in `docs/adr/`.
 - Read current official docs before using Next/Supabase/Stripe APIs — they change fast (versions pinned in
   `docs/PLAN.md`).
+
+<!-- BEGIN:nextjs-agent-rules -->
+
+## This is NOT the Next.js you know
+
+This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` (resolved from this file's directory; in monorepos the `next` package may not be visible from the repo root) before writing any code. Heed deprecation notices.
+
+This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
+
+<!-- END:nextjs-agent-rules -->

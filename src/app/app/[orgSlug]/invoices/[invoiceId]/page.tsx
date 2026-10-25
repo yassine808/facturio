@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { currentEmailConfig } from "@/features/email/config";
+import { EmailInvoiceForm } from "@/features/email/email-form";
 import {
   DeletePaymentForm,
   InvoiceTransitionForm,
@@ -13,6 +15,8 @@ import {
   listInvoiceItems,
   listPayments,
 } from "@/features/invoices/queries";
+import { isLiveLink, listShareLinks } from "@/features/share/queries";
+import { ShareLinkForm } from "@/features/share/share-form";
 import { isOverdue } from "@/features/invoices/types";
 import { updateInvoice } from "@/features/invoices/actions";
 import { getOrgBySlug, getUserRole } from "@/features/orgs/queries";
@@ -57,6 +61,15 @@ export default async function InvoiceDetailPage({
   const overdue = isOverdue(invoice.status, invoice.due_date, todayIso());
   const paidTotal = payments.reduce((sum, p) => sum + p.amount_minor, 0);
 
+  // Share links only matter on issued invoices (the DB refuses them on
+  // drafts anyway); live = not revoked and not expired.
+  const shareLinks =
+    sent || invoice.status === "paid"
+      ? await listShareLinks(supabase, org.id, invoice.id)
+      : [];
+  const nowIso = new Date().toISOString();
+  const emailConfig = currentEmailConfig();
+
   // Draft editing needs the client dropdown; an archived (or deleted) client
   // the draft still points at must stay selectable, so prepend it if missing.
   const clientOptions = draft ? await listClientOptions(supabase, org.id) : [];
@@ -91,7 +104,9 @@ export default async function InvoiceDetailPage({
             {invoice.clients?.name ?? "Unknown client"} · issued {invoice.issue_date}
             {invoice.due_date && ` · due ${invoice.due_date}`}
             {overdue && (
-              <span className="ml-1 font-medium text-red-600 dark:text-red-400">· OVERDUE</span>
+              <span className="ml-1 font-medium text-red-600 dark:text-red-400">
+                · OVERDUE
+              </span>
             )}
           </p>
         </div>
@@ -145,7 +160,9 @@ export default async function InvoiceDetailPage({
                 {items.map((item) => (
                   <tr key={item.id}>
                     <td className="px-4 py-2">{item.description}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{item.quantity}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">
+                      {item.quantity}
+                    </td>
                     <td className="px-4 py-2 text-right tabular-nums">
                       {formatMinor(item.unit_price_minor, currency)}
                     </td>
@@ -225,12 +242,16 @@ export default async function InvoiceDetailPage({
                           {payment.notes && ` · ${payment.notes}`}
                         </span>
                       </div>
-                      {sent && <DeletePaymentForm orgSlug={org.slug} paymentId={payment.id} />}
+                      {sent && (
+                        <DeletePaymentForm orgSlug={org.slug} paymentId={payment.id} />
+                      )}
                     </li>
                   ))}
                   <li className="flex items-center justify-between px-4 py-2.5 text-sm font-medium">
                     <span>Paid so far</span>
-                    <span className="tabular-nums">{formatMinor(paidTotal, currency)}</span>
+                    <span className="tabular-nums">
+                      {formatMinor(paidTotal, currency)}
+                    </span>
                   </li>
                 </ul>
               )}
@@ -248,6 +269,49 @@ export default async function InvoiceDetailPage({
                   </p>
                 )
               )}
+            </section>
+          )}
+
+          {(sent || invoice.status === "paid") && (
+            <section className="space-y-4">
+              <h2 className="text-lg font-semibold">Delivery</h2>
+              <div className="flex flex-wrap gap-2">
+                <a
+                  href={`/app/${org.slug}/invoices/${invoice.id}/pdf`}
+                  download
+                  className="rounded-md border border-zinc-300 bg-transparent px-4 py-2 text-sm font-medium text-zinc-700 hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                >
+                  Download PDF
+                </a>
+              </div>
+              {sent &&
+                (emailConfig.mode === "disabled" ? (
+                  <p className="rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-600 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-400">
+                    Email delivery isn&apos;t configured on this server — download the
+                    PDF or use a share link instead.
+                  </p>
+                ) : (
+                  <EmailInvoiceForm
+                    orgSlug={org.slug}
+                    invoiceId={invoice.id}
+                    to={invoice.clients?.email ?? ""}
+                  />
+                ))}
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                Share links let your client open this invoice without an account — the
+                raw token is shown once and the link can be revoked at any time.
+              </p>
+              <ShareLinkForm
+                orgId={org.id}
+                orgSlug={org.slug}
+                invoiceId={invoice.id}
+                links={shareLinks
+                  .filter((link) => isLiveLink(link, nowIso))
+                  .map((link) => ({
+                    id: link.id,
+                    expiresAtLabel: link.expires_at.slice(0, 10),
+                  }))}
+              />
             </section>
           )}
         </>
