@@ -55,7 +55,7 @@ pnpm test:e2e                                                 # Playwright; buil
 ## Git
 
 - Identity (local config, never commit as anyone else): `yassine808` / `166349232+yassine808@users.noreply.github.com`
-- Remote: `origin` = https://github.com/yassine808/project1.git
+- Remote: `origin` = https://github.com/yassine808/facturio.git
 - Add files **individually** (no `git add .`). Small Conventional Commits (commitlint runs via lefthook).
 - `main` always deployable; branches `feat/…`, `fix/…`, `chore/…`, `docs/…`; merge `--no-ff`; tag `v0.x` per phase.
 - Line endings pinned LF via `.gitattributes` (Windows dev + Linux CI).

@@ -20,8 +20,8 @@ invoicing service — no warranty, MIT licensed.
 Prerequisites: **Node ≥24**, **pnpm**, **Docker Desktop** (for the local database).
 
 ```bash
-git clone https://github.com/yassine808/project1.git
-cd project1
+git clone https://github.com/yassine808/facturio.git
+cd facturio
 pnpm install                 # installs deps + git hooks (lefthook)
 cp .env.example .env         # placeholders; .env is git-ignored
 pnpm db:start                # first run pulls Docker images (~2 min)
